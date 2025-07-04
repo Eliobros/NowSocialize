@@ -1,0 +1,58 @@
+-- Create additional collections for the new features
+
+-- Update users collection to include profile fields
+-- db.users.updateMany({}, {
+--   $set: {
+--     username: "",
+--     bio: "",
+--     avatar: "",
+--     followers: 0,
+--     following: 0
+--   }
+-- })
+
+-- Notifications collection structure:
+-- {
+--   _id: ObjectId,
+--   userId: ObjectId (reference to users._id - who receives the notification),
+--   fromUserId: ObjectId (reference to users._id - who triggered the notification),
+--   type: String ("like", "comment", "follow", "mention"),
+--   message: String,
+--   read: Boolean,
+--   postId: ObjectId (optional - reference to posts._id),
+--   createdAt: Date
+-- }
+
+-- Messages collection structure:
+-- {
+--   _id: ObjectId,
+--   conversationId: ObjectId,
+--   sender: ObjectId (reference to users._id),
+--   receiver: ObjectId (reference to users._id),
+--   content: String,
+--   read: Boolean,
+--   createdAt: Date
+-- }
+
+-- Conversations collection structure:
+-- {
+--   _id: ObjectId,
+--   participants: [ObjectId] (array of user IDs),
+--   lastMessage: {
+--     content: String,
+--     sender: ObjectId,
+--     createdAt: Date
+--   },
+--   createdAt: Date,
+--   updatedAt: Date
+-- }
+
+-- Create indexes for better performance
+-- db.notifications.createIndex({ "userId": 1, "createdAt": -1 })
+-- db.notifications.createIndex({ "read": 1 })
+-- db.messages.createIndex({ "conversationId": 1, "createdAt": 1 })
+-- db.messages.createIndex({ "sender": 1 })
+-- db.messages.createIndex({ "receiver": 1 })
+-- db.conversations.createIndex({ "participants": 1 })
+-- db.conversations.createIndex({ "updatedAt": -1 })
+-- db.users.createIndex({ "username": 1 }, { unique: true, sparse: true })
