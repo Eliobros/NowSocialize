@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Navbar } from "@/components/navbar"
 import { CheckCircle, Shield, Home, Loader2, AlertCircle } from "lucide-react"
 
-export default function VerificaClient() {
+export default function VerificaContent() {
   const [loading, setLoading] = useState(true)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState("")
