@@ -2,7 +2,7 @@ modules = ["nodejs-20", "web"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["openssh"]
+packages = ["openssh", "mongosh"]
 
 [[ports]]
 localPort = 3000

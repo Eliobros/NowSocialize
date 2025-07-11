@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
@@ -26,6 +25,15 @@ interface Post {
   likes: number
 }
 
+// Adicione uma interface para os dados do usuário que você espera de /api/me
+interface UserData {
+  name: string
+  email: string
+  username: string
+  userEmailVerified: boolean
+  // Adicione outros campos que /api/me retorna
+}
+
 export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>([])
   const [newPost, setNewPost] = useState("")
@@ -34,7 +42,11 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true)
   const [posting, setPosting] = useState(false)
   const [error, setError] = useState("")
+  const [user, setUser] = useState<UserData | null>(null) // Armazena os dados completos do usuário
+  const [emailSent, setEmailSent] = useState(false)
+  const [sendingEmail, setSendingEmail] = useState(false)
   const [showCreateStory, setShowCreateStory] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
@@ -45,6 +57,7 @@ export default function FeedPage() {
       return
     }
     fetchPosts()
+    fetchUserData() // Chamada para buscar os dados do usuário
   }, [router])
 
   const fetchPosts = async () => {
@@ -55,7 +68,6 @@ export default function FeedPage() {
           Authorization: `Bearer ${token}`,
         },
       })
-
       if (response.ok) {
         const data = await response.json()
         setPosts(data.posts)
@@ -69,25 +81,41 @@ export default function FeedPage() {
     }
   }
 
+  const fetchUserData = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data: UserData = await response.json()
+        setUser(data) // Armazena os dados completos do usuário
+      } else {
+        console.error("Erro ao buscar dados do usuário:", response.statusText)
+        setUser(null) // Limpa os dados do usuário em caso de erro
+      }
+    } catch (error) {
+      console.error("Erro de conexão ao buscar dados do usuário:", error)
+      setUser(null) // Limpa os dados do usuário em caso de erro de conexão
+    }
+  }
+
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validar tipo de arquivo
     if (!file.type.startsWith("image/")) {
       setError("Por favor, selecione apenas arquivos de imagem")
       return
     }
-
-    // Validar tamanho (5MB max)
     if (file.size > 5 * 1024 * 1024) {
       setError("A imagem deve ter no máximo 5MB")
       return
     }
 
     setSelectedImage(file)
-
-    // Criar preview
     const reader = new FileReader()
     reader.onload = (e) => {
       setImagePreview(e.target?.result as string)
@@ -112,9 +140,7 @@ export default function FeedPage() {
 
     try {
       const token = localStorage.getItem("token")
-
       if (selectedImage) {
-        // Post com imagem
         const formData = new FormData()
         formData.append("content", newPost)
         formData.append("image", selectedImage)
@@ -135,7 +161,6 @@ export default function FeedPage() {
           setError("Erro ao criar post")
         }
       } else {
-        // Post apenas texto
         const response = await fetch("/api/posts", {
           method: "POST",
           headers: {
@@ -173,19 +198,63 @@ export default function FeedPage() {
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       <Navbar />
-
+      {/* Use user?.userEmailVerified para acessar o status */}
+      {!user?.userEmailVerified && (
+        <Alert variant="destructive" className="mx-auto mt-6 max-w-2xl">
+          <AlertDescription className="flex items-center justify-between">
+            <span>Seu e-mail ainda não foi verificado. Verifique para aproveitar todos os recursos.</span>
+            <Button
+              onClick={async () => {
+                setSendingEmail(true)
+                setError("") // Limpa qualquer erro anterior
+                if (!user?.email) {
+                  setError("Email do usuário não disponível para reenviar link.")
+                  setSendingEmail(false)
+                  return
+                }
+                try {
+                  const token = localStorage.getItem("token")
+                  const response = await fetch("/api/send-verification-link", {
+                    // <-- Endpoint corrigido
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ email: user.email }), // <-- Enviando o email no body
+                  })
+                  if (response.ok) {
+                    setEmailSent(true)
+                    setError("")
+                  } else {
+                    const errorData = await response.json()
+                    setError(errorData.error || "Erro ao reenviar link de verificação.")
+                  }
+                } catch (err) {
+                  setError("Erro de conexão ao enviar o link.")
+                } finally {
+                  setSendingEmail(false)
+                }
+              }}
+              disabled={sendingEmail || emailSent}
+              size="sm"
+              variant="outline"
+            >
+              {sendingEmail ? "Enviando..." : emailSent ? "Link enviado!" : "Reenviar link"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       {/* Stories Section - Mobile */}
       <div className="md:hidden bg-white border-b border-gray-200">
         <StoriesSection onCreateStory={() => setShowCreateStory(true)} />
       </div>
-
       <div className="container mx-auto px-4 py-8 max-w-2xl overflow-x-hidden">
         {error && (
           <Alert variant="destructive" className="mb-6">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-
         {/* Stories Section - Desktop */}
         <div className="hidden md:block mb-8">
           <Card>
@@ -197,7 +266,6 @@ export default function FeedPage() {
             </CardContent>
           </Card>
         </div>
-
         <Card className="mb-8 w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -214,7 +282,6 @@ export default function FeedPage() {
                 rows={3}
                 className="resize-none"
               />
-
               {imagePreview && (
                 <div className="relative w-full">
                   <img
@@ -233,7 +300,6 @@ export default function FeedPage() {
                   </Button>
                 </div>
               )}
-
               <div className="flex items-center justify-between">
                 <div className="flex gap-2">
                   <input
@@ -248,7 +314,6 @@ export default function FeedPage() {
                     Foto
                   </Button>
                 </div>
-
                 <Button type="submit" disabled={posting || (!newPost.trim() && !selectedImage)}>
                   {posting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Publicar
@@ -257,7 +322,6 @@ export default function FeedPage() {
             </form>
           </CardContent>
         </Card>
-
         <div className="space-y-6">
           {posts.length === 0 ? (
             <Card>
@@ -270,7 +334,6 @@ export default function FeedPage() {
           )}
         </div>
       </div>
-
       <CreateStoryDialog
         open={showCreateStory}
         onOpenChange={setShowCreateStory}
