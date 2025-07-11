@@ -240,7 +240,7 @@ export default function FeedPage() {
               size="sm"
               variant="outline"
             >
-              {sendingEmail ? "Enviando..." : emailSent ? "Link enviado!" : "Reenviar link"}
+              {sendingEmail ? "Enviando..." : emailSent ? "Link enviado!" : "Enviar o link"}
             </Button>
           </AlertDescription>
         </Alert>
