@@ -208,7 +208,7 @@ export default function FeedPage() {
                 setSendingEmail(true)
                 setError("") // Limpa qualquer erro anterior
                 if (!user?.email) {
-                  setError("Email do usuário não disponível para reenviar link.")
+                  setError(" Ops!, Email do usuário não disponível para reenviar link.")
                   setSendingEmail(false)
                   return
                 }
