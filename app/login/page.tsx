@@ -89,6 +89,11 @@ export default function LoginPage() {
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 required
               />
+              <div className="text-right text-sm">
+                <Link href="/forgot-password" className="text-blue-600 hover:underline">
+                  Esqueci minha senha
+                </Link>
+              </div>
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
