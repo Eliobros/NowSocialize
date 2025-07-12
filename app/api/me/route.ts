@@ -1,16 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
-import clientPromise from "@/lib/mongodb" // Importa seu clientPromise
-import { ObjectId } from "mongodb" // Para trabalhar com _id do MongoDB
-import jwt from "jsonwebtoken" // Para verificar o JWT
+import clientPromise from "@/lib/mongodb"
+import { ObjectId } from "mongodb"
+import jwt from "jsonwebtoken"
 
-// Interface para o documento do usuário no MongoDB
 interface UserDocument {
   _id: ObjectId
   name: string
   email: string
   username: string
-  isEmailVerified: boolean // Campo que armazena o status de verificação
-  // Adicione outros campos do seu usuário aqui
+  userEmailVerified: boolean // CORRETO: campo que armazena status da verificação
 }
 
 export async function GET(req: NextRequest) {
@@ -21,15 +19,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Não autorizado: Token não fornecido." }, { status: 401 })
   }
 
-  const jwtSecret = process.env.JWT_SECRET // Sua chave secreta JWT
+  const jwtSecret = process.env.JWT_SECRET
   if (!jwtSecret) {
-    console.error("JWT_SECRET não está configurada nas variáveis de ambiente.")
+    console.error("JWT_SECRET não configurado nas variáveis de ambiente.")
     return NextResponse.json({ error: "Erro de configuração do servidor." }, { status: 500 })
   }
 
   let userId: string
   try {
-    // Decodifica e verifica o token JWT
     const decoded = jwt.verify(token, jwtSecret) as { userId: string }
     userId = decoded.userId
   } catch (error) {
@@ -39,22 +36,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const client = await clientPromise
-    const db = client.db("socializenow") // Substitua "socializenow" pelo nome do seu banco de dados
-    const usersCollection = db.collection<UserDocument>("users") // Substitua "users" pelo nome da sua coleção de usuários
+    const db = client.db("socializenow")
+    const usersCollection = db.collection<UserDocument>("users")
 
-    // Busca o usuário pelo _id
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) })
 
     if (!user) {
       return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 })
     }
 
-    // Retorna os dados do usuário, incluindo o status de verificação
     return NextResponse.json({
       name: user.name,
       email: user.email,
       username: user.username,
-      userEmailVerified: user.isEmailVerified ?? false, // Garante que seja booleano, default para false
+      userEmailVerified: user.userEmailVerified ?? false,
     })
   } catch (error) {
     console.error("Erro ao buscar usuário no MongoDB:", error)
