@@ -1,0 +1,189 @@
+"use client"
+
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Heart, MessageCircle, Share, CheckCircle } from "lucide-react"
+import Link from "next/link"
+import { useState } from "react"
+
+interface Reel {
+  _id: string
+  videoUrl: string
+  content: string
+  author: {
+    _id: string
+    name: string
+    username: string
+    avatar?: string
+    isVerified?: boolean
+  }
+  createdAt: string
+  likes: number
+  commentsCount: number
+  likedByUser: boolean
+  viewedByUser: boolean
+  duration: number
+}
+
+interface ReelCardProps {
+  reel: Reel
+  onReelViewed: (reelId: string) => void
+}
+
+export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
+  const [liked, setLiked] = useState(reel.likedByUser)
+  const [likeCount, setLikeCount] = useState(reel.likes || 0)
+  const [isLiking, setIsLiking] = useState(false)
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const handleLike = async () => {
+    if (isLiking) return
+
+    setIsLiking(true)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/reels/${reel._id}/like`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setLiked(data.liked)
+        setLikeCount(data.likes)
+      }
+    } catch (error) {
+      console.error("Error liking reel:", error)
+    } finally {
+      setIsLiking(false)
+    }
+  }
+
+  const handleShare = async (platform: string) => {
+    if (typeof window === "undefined") return
+
+    const reelUrl = `${window.location.origin}/reels/${reel._id}`
+    const text = `Confira este reel no SocializeNow: ${reel.content.substring(0, 100)}...`
+
+    try {
+      switch (platform) {
+        case "copy":
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(reelUrl)
+            alert("Link copiado!")
+          } else {
+            alert("Funcionalidade de copiar não suportada neste navegador.")
+          }
+          break
+        case "whatsapp":
+          window.open(`https://wa.me/?text=${encodeURIComponent(text + " " + reelUrl)}`)
+          break
+        case "twitter":
+          window.open(
+            `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(reelUrl)}`,
+          )
+          break
+        case "facebook":
+          window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(reelUrl)}`)
+          break
+      }
+    } catch (error) {
+      console.error("Erro ao compartilhar:", error)
+      alert("Erro ao tentar compartilhar o link.")
+    }
+  }
+
+  return (
+    <Card className="w-full h-full flex flex-col bg-black text-white rounded-none border-none">
+      <CardContent className="flex-1 p-0 relative">
+        <video
+          src={reel.videoUrl}
+          className="w-full h-full object-cover"
+          loop
+          autoPlay
+          muted // Start muted for autoplay, user can unmute
+          playsInline
+          onPlay={() => {
+            if (!reel.viewedByUser) {
+              onReelViewed(reel._id)
+            }
+          }}
+        />
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
+          <div className="flex items-center gap-3 mb-2">
+            <Avatar className="h-10 w-10">
+              {reel.author.avatar ? (
+                <AvatarImage src={reel.author.avatar || "/placeholder.svg"} alt={reel.author.name} />
+              ) : null}
+              <AvatarFallback className="bg-blue-600 text-white">{getInitials(reel.author.name)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <Link
+                href={`/profile/${reel.author._id}`}
+                className="font-semibold hover:text-blue-300 transition-colors flex items-center gap-1"
+              >
+                {reel.author.name}
+                {reel.author.isVerified && <CheckCircle className="h-4 w-4 text-blue-500" />}
+              </Link>
+              <p className="text-sm text-gray-300">@{reel.author.username}</p>
+            </div>
+          </div>
+          {reel.content && <p className="text-sm mb-4 whitespace-pre-wrap break-words">{reel.content}</p>}
+        </div>
+
+        <div className="absolute right-4 bottom-40 flex flex-col gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`flex flex-col items-center justify-center gap-1 text-white ${liked ? "text-red-500" : "hover:text-red-500"}`}
+            onClick={handleLike}
+            disabled={isLiking}
+          >
+            <Heart className={`h-6 w-6 ${liked ? "fill-current" : ""}`} />
+            <span className="text-xs">{likeCount}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="flex flex-col items-center justify-center gap-1 text-white hover:text-blue-300"
+          >
+            <MessageCircle className="h-6 w-6" />
+            <span className="text-xs">{reel.commentsCount}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="flex flex-col items-center justify-center gap-1 text-white hover:text-green-300"
+            onClick={() => handleShare("copy")}
+          >
+            <Share className="h-6 w-6" />
+            <span className="text-xs">Partilhar</span>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
