@@ -197,6 +197,7 @@ export function PostCard({ post }: PostCardProps) {
             <Link
               href={`/profile/${post.author._id}`}
               className="font-semibold hover:text-blue-600 transition-colors flex items-center gap-1"
+              onClick={() => console.log(`Navegando para perfil: ${post.author._id}`)}
             >
               {post.author.name}
               {post.author.isVerified && <CheckCircle className="h-4 w-4 text-blue-500" />}
