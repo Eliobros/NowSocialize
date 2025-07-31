@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { Heart, MessageCircle, Share, Send, CheckCircle } from "lucide-react"
+import { Heart, MessageCircle, Share, Send, CheckCircle, X } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
 
@@ -48,6 +48,7 @@ export function PostCard({ post }: PostCardProps) {
   const [isLiking, setIsLiking] = useState(false)
   const [comment, setComment] = useState("")
   const [isCommenting, setIsCommenting] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [showCommentsDialog, setShowCommentsDialog] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
@@ -187,7 +188,10 @@ export function PostCard({ post }: PostCardProps) {
     <Card className="w-full overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10">
+          <Avatar 
+            className="h-10 w-10 cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all"
+            onClick={() => setShowProfileModal(true)}
+          >
             {post.author.avatar ? (
               <AvatarImage src={post.author.avatar || "/placeholder.svg"} alt={post.author.name} />
             ) : null}
@@ -308,6 +312,54 @@ export function PostCard({ post }: PostCardProps) {
           </Dialog>
         </div>
       </CardContent>
+      
+      {/* Modal da Foto de Perfil */}
+      <Dialog open={showProfileModal} onOpenChange={setShowProfileModal}>
+        <DialogContent className="max-w-md mx-auto bg-white rounded-lg">
+          <DialogHeader className="flex flex-row items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              {post.author.name}
+              {post.author.isVerified && <CheckCircle className="h-5 w-5 text-blue-500" />}
+            </DialogTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowProfileModal(false)}
+              className="h-6 w-6 rounded-full"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 p-4">
+            <div className="relative">
+              {post.author.avatar ? (
+                <img 
+                  src={post.author.avatar} 
+                  alt={post.author.name}
+                  className="w-48 h-48 rounded-full object-cover border-4 border-gray-200"
+                />
+              ) : (
+                <div className="w-48 h-48 rounded-full bg-blue-600 flex items-center justify-center text-white text-6xl font-bold border-4 border-gray-200">
+                  {getInitials(post.author.name)}
+                </div>
+              )}
+            </div>
+            <div className="text-center">
+              <h3 className="text-xl font-semibold text-gray-900">{post.author.name}</h3>
+              <p className="text-gray-600">@{post.author.email}</p>
+            </div>
+            <Link 
+              href={`/profile/${post.author._id}`}
+              className="w-full"
+              onClick={() => setShowProfileModal(false)}
+            >
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                Ver Perfil Completo
+              </Button>
+            </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

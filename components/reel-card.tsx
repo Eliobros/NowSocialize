@@ -3,9 +3,10 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Heart, MessageCircle, Share, CheckCircle } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Heart, MessageCircle, Share, CheckCircle, Volume2, VolumeX, X } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useRef } from "react"
 
 interface Reel {
   _id: string
@@ -35,6 +36,9 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
   const [liked, setLiked] = useState(reel.likedByUser)
   const [likeCount, setLikeCount] = useState(reel.likes || 0)
   const [isLiking, setIsLiking] = useState(false)
+  const [isMuted, setIsMuted] = useState(true)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   const getInitials = (name: string) => {
     return name
@@ -81,6 +85,14 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
     }
   }
 
+  const toggleMute = () => {
+    if (videoRef.current) {
+      const newMutedState = !isMuted
+      videoRef.current.muted = newMutedState
+      setIsMuted(newMutedState)
+    }
+  }
+
   const handleShare = async (platform: string) => {
     if (typeof window === "undefined") return
 
@@ -119,11 +131,12 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
     <Card className="w-full h-full flex flex-col bg-black text-white rounded-none border-none">
       <CardContent className="flex-1 p-0 relative">
         <video
+          ref={videoRef}
           src={reel.videoUrl}
           className="w-full h-full object-cover"
           loop
           autoPlay
-          muted // Start muted for autoplay, user can unmute
+          muted={isMuted}
           playsInline
           onPlay={() => {
             if (!reel.viewedByUser) {
@@ -131,9 +144,22 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
             }
           }}
         />
+        
+        {/* Controle de Som */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-4 right-4 text-white bg-black/30 hover:bg-black/50 rounded-full"
+          onClick={toggleMute}
+        >
+          {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+        </Button>
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
           <div className="flex items-center gap-3 mb-2">
-            <Avatar className="h-10 w-10">
+            <Avatar 
+              className="h-10 w-10 cursor-pointer hover:ring-2 hover:ring-white/50 transition-all"
+              onClick={() => setShowProfileModal(true)}
+            >
               {reel.author.avatar ? (
                 <AvatarImage src={reel.author.avatar || "/placeholder.svg"} alt={reel.author.name} />
               ) : null}
@@ -183,6 +209,54 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
           </Button>
         </div>
       </CardContent>
+      
+      {/* Modal da Foto de Perfil */}
+      <Dialog open={showProfileModal} onOpenChange={setShowProfileModal}>
+        <DialogContent className="max-w-md mx-auto bg-white rounded-lg">
+          <DialogHeader className="flex flex-row items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              {reel.author.name}
+              {reel.author.isVerified && <CheckCircle className="h-5 w-5 text-blue-500" />}
+            </DialogTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowProfileModal(false)}
+              className="h-6 w-6 rounded-full"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 p-4">
+            <div className="relative">
+              {reel.author.avatar ? (
+                <img 
+                  src={reel.author.avatar} 
+                  alt={reel.author.name}
+                  className="w-48 h-48 rounded-full object-cover border-4 border-gray-200"
+                />
+              ) : (
+                <div className="w-48 h-48 rounded-full bg-blue-600 flex items-center justify-center text-white text-6xl font-bold border-4 border-gray-200">
+                  {getInitials(reel.author.name)}
+                </div>
+              )}
+            </div>
+            <div className="text-center">
+              <h3 className="text-xl font-semibold text-gray-900">{reel.author.name}</h3>
+              <p className="text-gray-600">@{reel.author.username}</p>
+            </div>
+            <Link 
+              href={`/profile/${reel.author._id}`}
+              className="w-full"
+              onClick={() => setShowProfileModal(false)}
+            >
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                Ver Perfil Completo
+              </Button>
+            </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

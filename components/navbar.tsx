@@ -78,9 +78,9 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 w-full bg-white border-b border-gray-200 shadow-sm">
         <div className="container mx-auto h-16 flex items-center justify-between px-4 md:px-6">
-          <Link href="/feed" className="flex items-center gap-2 font-bold text-lg">
-            <img src="/placeholder-logo.png" alt="SocializeNow Logo" className="h-8 w-auto" />
-            <span className="hidden md:block">SocializeNow</span>
+          <Link href="/feed" className="flex items-center gap-3 font-bold text-xl">
+            <img src="/soocializenow.png" alt="SocializeNow Logo" className="h-10 w-10 rounded-full object-cover" />
+            <span className="text-blue-600 hidden sm:block">SocializeNow</span>
           </Link>
 
           {/* Desktop Navigation */}
