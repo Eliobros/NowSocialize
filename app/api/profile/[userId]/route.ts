@@ -45,12 +45,13 @@ export async function GET(
     const currentUserId = new ObjectId(user.userId)
 
     // Get user basic info
-    const targetUser = await users.findOne({ _id: targetUserId })
+    const targetUser = await users.findOne({ _id: targetUserId }, { projection: { password: 0 } })
     if (!targetUser) {
+      console.error(`Usuário não encontrado com ID: ${userId}`)
       return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
     }
 
-    // Get profile info
+    // Get profile info (pode não existir para todos os usuários)
     const profileInfo = await profiles.findOne({ userId: targetUserId })
 
     // Count followers and following
@@ -69,14 +70,15 @@ export async function GET(
     const profile = {
       _id: targetUser._id,
       name: targetUser.name,
-      username: profileInfo?.username || targetUser.email.split("@")[0],
+      username: profileInfo?.username || targetUser.username || targetUser.email.split("@")[0],
       email: targetUser.email,
-      bio: profileInfo?.bio || "",
-      avatar: profileInfo?.avatar,
+      bio: profileInfo?.bio || targetUser.bio || "",
+      avatar: profileInfo?.avatar || targetUser.avatar || "",
       followers: followersCount,
       following: followingCount,
       postsCount: postsCount,
       isFollowing: !!isFollowing,
+      isVerified: targetUser.isVerified || false,
     }
 
     return NextResponse.json({ profile })

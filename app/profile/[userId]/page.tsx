@@ -58,6 +58,8 @@ export default function UserProfilePage({ params }: { params: { userId: string }
   const fetchUserProfile = async () => {
     try {
       const token = localStorage.getItem("token")
+      console.log(`Buscando perfil para userId: ${params.userId}`)
+      
       const response = await fetch(`/api/profile/${params.userId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -66,12 +68,16 @@ export default function UserProfilePage({ params }: { params: { userId: string }
 
       if (response.ok) {
         const data = await response.json()
+        console.log("Perfil carregado com sucesso:", data.profile)
         setProfile(data.profile)
         setFollowing(data.profile.isFollowing || false)
       } else {
-        setError("Erro ao carregar perfil")
+        const errorData = await response.json()
+        console.error("Erro na resposta da API:", response.status, errorData)
+        setError(errorData.error || "Erro ao carregar perfil")
       }
     } catch (error) {
+      console.error("Erro ao buscar perfil:", error)
       setError("Erro de conexão")
     }
   }
