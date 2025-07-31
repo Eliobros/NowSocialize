@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Heart, MessageCircle, Share, CheckCircle, Volume2, VolumeX, X } from "lucide-react"
 import Link from "next/link"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 
 interface Reel {
   _id: string
@@ -30,15 +30,29 @@ interface Reel {
 interface ReelCardProps {
   reel: Reel
   onReelViewed: (reelId: string) => void
+  isActive?: boolean // Para controlar se este reel está ativo
 }
 
-export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
+export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps) {
   const [liked, setLiked] = useState(reel.likedByUser)
   const [likeCount, setLikeCount] = useState(reel.likes || 0)
   const [isLiking, setIsLiking] = useState(false)
   const [isMuted, setIsMuted] = useState(true)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(true)
+  const [showCommentsModal, setShowCommentsModal] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Controlar reprodução baseado no isActive
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isActive && isPlaying) {
+        videoRef.current.play()
+      } else {
+        videoRef.current.pause()
+      }
+    }
+  }, [isActive, isPlaying])
 
   const getInitials = (name: string) => {
     return name
@@ -47,6 +61,17 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
       .join("")
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  const togglePlayPause = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause()
+      } else {
+        videoRef.current.play()
+      }
+      setIsPlaying(!isPlaying)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -133,16 +158,19 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
         <video
           ref={videoRef}
           src={reel.videoUrl}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover cursor-pointer"
           loop
-          autoPlay
+          autoPlay={isActive}
           muted={isMuted}
           playsInline
+          onClick={togglePlayPause}
           onPlay={() => {
+            setIsPlaying(true)
             if (!reel.viewedByUser) {
               onReelViewed(reel._id)
             }
           }}
+          onPause={() => setIsPlaying(false)}
         />
         
         {/* Controle de Som */}
@@ -194,6 +222,7 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
             variant="ghost"
             size="icon"
             className="flex flex-col items-center justify-center gap-1 text-white hover:text-blue-300"
+            onClick={() => setShowCommentsModal(true)}
           >
             <MessageCircle className="h-6 w-6" />
             <span className="text-xs">{reel.commentsCount}</span>
@@ -254,6 +283,30 @@ export function ReelCard({ reel, onReelViewed }: ReelCardProps) {
                 Ver Perfil Completo
               </Button>
             </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Comentários */}
+      <Dialog open={showCommentsModal} onOpenChange={setShowCommentsModal}>
+        <DialogContent className="max-w-md mx-auto bg-white rounded-lg max-h-[80vh] overflow-hidden">
+          <DialogHeader className="flex flex-row items-center justify-between">
+            <DialogTitle>Comentários</DialogTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowCommentsModal(false)}
+              className="h-6 w-6 rounded-full"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 p-4 max-h-96 overflow-y-auto">
+            <div className="text-center text-gray-500">
+              <MessageCircle className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+              <p>Funcionalidade de comentários será implementada em breve!</p>
+              <p className="text-sm mt-2">Por enquanto você pode curtir e compartilhar este reel.</p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

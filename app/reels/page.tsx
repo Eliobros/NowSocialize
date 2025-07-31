@@ -146,7 +146,11 @@ export default function ReelsPage() {
       >
         {reels.map((reel, index) => (
           <div key={reel._id} className="snap-start w-full h-full flex items-center justify-center">
-            <ReelCard reel={reel} onReelViewed={handleReelViewed} />
+            <ReelCard 
+              reel={reel} 
+              onReelViewed={handleReelViewed} 
+              isActive={index === currentReelIndex}
+            />
           </div>
         ))}
       </div>
