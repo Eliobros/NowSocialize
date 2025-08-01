@@ -52,9 +52,12 @@ export async function GET(request: NextRequest) {
             content: 1,
             createdAt: 1,
             likes: 1,
-	    image: 1,
+            image: 1,
+            "author._id": 1,
             "author.name": 1,
             "author.email": 1,
+            "author.avatar": 1,
+            "author.isVerified": 1,
           },
         },
         {

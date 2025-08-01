@@ -46,13 +46,28 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   // Controlar reprodução baseado no isActive
   useEffect(() => {
     if (videoRef.current) {
-      if (isActive && isPlaying) {
-        videoRef.current.play()
+      if (isActive) {
+        // Quando o reel fica ativo, sempre tenta tocar
+        setIsPlaying(true)
+        videoRef.current.play().catch(console.error)
+      } else {
+        // Quando não está ativo, pausa
+        videoRef.current.pause()
+        setIsPlaying(false)
+      }
+    }
+  }, [isActive])
+
+  // Controlar play/pause manual
+  useEffect(() => {
+    if (videoRef.current && isActive) {
+      if (isPlaying) {
+        videoRef.current.play().catch(console.error)
       } else {
         videoRef.current.pause()
       }
     }
-  }, [isActive, isPlaying])
+  }, [isPlaying, isActive])
 
   const getInitials = (name: string) => {
     return name

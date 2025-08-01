@@ -67,10 +67,9 @@ export function Navbar() {
 
   const navItems = [
     { href: "/feed", icon: Home, label: "Início" },
-    { href: "/search", icon: Search, label: "Buscar" },
-    { href: "/reels", icon: Video, label: "Reels" },
     { href: "/notifications", icon: Bell, label: "Notificações" },
-    { href: "/messages", icon: MessageSquare, label: "Mensagens" },
+    { href: "/reels", icon: Video, label: "Reels" },
+    { href: "/search", icon: Search, label: "Buscar" },
     { href: "/profile", icon: User, label: "Perfil" },
   ]
 
@@ -80,7 +79,7 @@ export function Navbar() {
         <div className="container mx-auto h-16 flex items-center justify-between px-4 md:px-6">
           <Link href="/feed" className="flex items-center gap-3 font-bold text-xl">
             <img src="/soocializenow.png" alt="SocializeNow Logo" className="h-10 w-10 rounded-full object-cover" />
-            <span className="text-blue-600 hidden sm:block">SocializeNow</span>
+            <span className="text-blue-600">SocializeNow</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -109,8 +108,17 @@ export function Navbar() {
                 </Avatar>
               </Link>
             )}
+            
+            {/* Link direto para mensagens no mobile */}
+            <Link href="/messages" className="md:hidden">
+              <Button variant="ghost" size="icon" className={pathname === "/messages" ? "text-blue-600" : ""}>
+                <MessageSquare className="h-6 w-6" />
+              </Button>
+            </Link>
+
+            {/* Menu hambúrguer apenas no desktop */}
             <Sheet>
-              <SheetTrigger asChild className="md:hidden">
+              <SheetTrigger asChild className="hidden md:block">
                 <Button variant="ghost" size="icon">
                   <Menu className="h-6 w-6" />
                   <span className="sr-only">Toggle navigation menu</span>
@@ -118,18 +126,15 @@ export function Navbar() {
               </SheetTrigger>
               <SheetContent side="right" className="w-[250px] sm:w-[300px]">
                 <nav className="flex flex-col gap-4 pt-6">
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex items-center gap-3 text-lg font-medium transition-colors hover:text-blue-600 ${
-                        pathname === item.href ? "text-blue-600" : "text-gray-600"
-                      }`}
-                    >
-                      <item.icon className="h-6 w-6" />
-                      {item.label}
-                    </Link>
-                  ))}
+                  <Link
+                    href="/messages"
+                    className={`flex items-center gap-3 text-lg font-medium transition-colors hover:text-blue-600 ${
+                      pathname === "/messages" ? "text-blue-600" : "text-gray-600"
+                    }`}
+                  >
+                    <MessageSquare className="h-6 w-6" />
+                    Mensagens
+                  </Link>
                   <Button
                     variant="ghost"
                     onClick={handleLogout}
@@ -146,17 +151,17 @@ export function Navbar() {
 
       {/* Bottom Navigation for Mobile */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg md:hidden z-50">
-        <nav className="flex justify-around h-14 items-center">
+        <nav className="flex justify-around h-12 items-center px-2">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center text-xs font-medium transition-colors ${
+              className={`flex flex-col items-center justify-center text-xs font-medium transition-colors p-1 ${
                 pathname === item.href ? "text-blue-600" : "text-gray-600 hover:text-blue-600"
               }`}
             >
-              <item.icon className="h-5 w-5" />
-              <span className="mt-1">{item.label}</span>
+              <item.icon className="h-4 w-4" />
+              <span className="mt-0.5 text-[10px]">{item.label}</span>
             </Link>
           ))}
         </nav>

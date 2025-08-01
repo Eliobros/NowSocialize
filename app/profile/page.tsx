@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Edit, MessageSquare, Settings, Shield, Camera, CheckCircle } from "lucide-react"
+import { Loader2, Edit, MessageSquare, Settings, Shield, Camera, CheckCircle, Menu, LogOut, Palette, Award } from "lucide-react"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 interface UserProfile {
   _id: string
@@ -258,6 +259,11 @@ export default function ProfilePage() {
       .slice(0, 2)
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    window.location.href = "/login"
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -288,7 +294,49 @@ export default function ProfilePage() {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header do Perfil */}
         <Card className="mb-8">
-          <CardContent className="pt-6">
+          <CardContent className="pt-6 relative">
+            {/* Menu Hambúrguer */}
+            <div className="absolute top-4 right-4">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[250px]">
+                  <div className="flex flex-col gap-4 pt-6">
+                    <h3 className="text-lg font-semibold mb-4">Menu</h3>
+                    
+                    <Button
+                      variant="ghost"
+                      onClick={handleLogout}
+                      className="justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      Sair
+                    </Button>
+                    
+                    <Button
+                      variant="ghost"
+                      className="justify-start gap-3 text-gray-600 hover:text-gray-700"
+                      onClick={() => alert("Funcionalidade em breve!")}
+                    >
+                      <Palette className="h-5 w-5" />
+                      Mudar Tema
+                    </Button>
+                    
+                    <Button
+                      variant="ghost"
+                      className="justify-start gap-3 text-blue-600 hover:text-blue-700"
+                      onClick={() => router.push("/pagamento-selo")}
+                    >
+                      <Award className="h-5 w-5" />
+                      Verificado
+                    </Button>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
             <div className="flex flex-col md:flex-row items-center gap-6">
               <div className="relative">
                 <Avatar className="h-32 w-32">
