@@ -56,20 +56,54 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
   const callTimerRef = useRef<NodeJS.Timeout>()
   const currentCallId = useRef<string>("")
   const callStartTime = useRef<number>(0)
+  const activityTimerRef = useRef<NodeJS.Timeout>()
+
+  // Function to update online status
+  const updateOnlineStatus = useCallback(async (isOnline: boolean) => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) return
+
+      const method = isOnline ? "PUT" : "PATCH"
+      const body = isOnline ? JSON.stringify({ isOnline: true }) : undefined
+
+      await fetch("/api/online-status", {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body,
+      })
+    } catch (error) {
+      console.error("Error updating online status:", error)
+    }
+  }, [])
+
+  // Function to send user activity
+  const sendUserActivity = useCallback(() => {
+    const socket = socketService.getSocket()
+    if (socket?.connected) {
+      socket.emit("user-activity")
+    }
+  }, [])
 
   useEffect(() => {
     const socket = socketService.connect(currentUserId)
 
     socket.on("connect", () => {
       setConnectionStatus("connected")
+      updateOnlineStatus(true)
     })
 
     socket.on("disconnect", () => {
       setConnectionStatus("disconnected")
+      updateOnlineStatus(false)
     })
 
     socket.on("connect_error", () => {
       setConnectionStatus("error")
+      updateOnlineStatus(false)
     })
 
     socket.on("incoming-call", (data) => {
@@ -103,6 +137,17 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       }
     })
 
+    // Listen for user status changes
+    socket.on("user-status-changed", (data) => {
+      // You can emit this to parent components if needed
+      console.log("User status changed:", data)
+    })
+
+    // Set up activity timer to keep user online
+    activityTimerRef.current = setInterval(() => {
+      sendUserActivity()
+    }, 30000) // Send activity every 30 seconds
+
     return () => {
       socket.off("connect")
       socket.off("disconnect")
@@ -112,8 +157,16 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       socket.off("call-rejected")
       socket.off("call-ended")
       socket.off("webrtc-signal")
+      socket.off("user-status-changed")
+      
+      if (activityTimerRef.current) {
+        clearInterval(activityTimerRef.current)
+      }
+      
+      // Mark as offline when component unmounts
+      updateOnlineStatus(false)
     }
-  }, [currentUserId])
+  }, [currentUserId, updateOnlineStatus, sendUserActivity])
 
   const startCallTimer = useCallback(() => {
     callStartTime.current = Date.now()

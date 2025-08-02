@@ -27,6 +27,8 @@ import {
   X,
 } from "lucide-react"
 import { CallManager } from "@/components/call/call-manager"
+import { AudioRecorder } from "@/components/audio-recorder"
+import { useEncryption } from "@/hooks/use-encryption"
 
 interface Message {
   _id: string
@@ -97,8 +99,12 @@ export default function MessagesPage() {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
 
   const [showCallConfirm, setShowCallConfirm] = useState(false)
+  
+  // Encryption hook
+  const { isEncryptionEnabled, hasKeys, generateKeys, setupConversation } = useEncryption()
   const [pendingCallType, setPendingCallType] = useState<"audio" | "video" | null>(null)
   const [pendingCallUser, setPendingCallUser] = useState<{ id: string; name: string } | null>(null)
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem("token")
@@ -423,6 +429,54 @@ export default function MessagesPage() {
     setPendingCallUser(null)
   }
 
+  // Audio recording functions
+  const handleAudioSent = async (audioUrl: string) => {
+    if (!selectedConversation) return
+
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) return
+
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          conversationId: selectedConversation,
+          content: "",
+          audioUrl,
+          type: "audio",
+        }),
+      })
+
+      if (response.ok) {
+        setNewMessage("")
+        setShowAudioRecorder(false)
+        await fetchMessages(selectedConversation)
+      }
+    } catch (error) {
+      console.error("Erro ao enviar áudio:", error)
+    }
+  }
+
+  const handleAudioCancel = () => {
+    setShowAudioRecorder(false)
+  }
+
+  // Encryption setup
+  const handleEncryptionSetup = async () => {
+    if (!hasKeys) {
+      const success = await generateKeys()
+      if (success) {
+        alert("Chaves de criptografia geradas com sucesso!")
+      } else {
+        alert("Erro ao gerar chaves de criptografia")
+      }
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -621,12 +675,29 @@ export default function MessagesPage() {
                         <p className="font-semibold text-black">
                           {otherParticipant ? otherParticipant.name : "Usuário"}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {otherParticipant ? formatLastSeen(otherParticipant.lastSeen) : ""}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-gray-500">
+                            {otherParticipant ? formatLastSeen(otherParticipant.lastSeen) : ""}
+                          </p>
+                          {isEncryptionEnabled && (
+                            <span className="text-xs bg-green-100 text-green-800 px-1 py-0.5 rounded-full">
+                              🔒
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
+                      {!hasKeys && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleEncryptionSetup}
+                          className="text-xs"
+                        >
+                          🔒 Ativar Criptografia
+                        </Button>
+                      )}
                       <Phone className="h-6 w-6 text-gray-600 cursor-pointer" onClick={() => startCall("audio")} />
                       <Video className="h-6 w-6 text-gray-600 cursor-pointer" onClick={() => startCall("video")} />
                       <Info className="h-6 w-6 text-gray-600" />
@@ -999,6 +1070,17 @@ export default function MessagesPage() {
                 )}
 
                 <div className="border-t p-4 flex-shrink-0">
+                  {/* Audio Recorder */}
+                  {showAudioRecorder && selectedConversation && (
+                    <div className="mb-2">
+                      <AudioRecorder
+                        conversationId={selectedConversation}
+                        onAudioSent={handleAudioSent}
+                        onCancel={handleAudioCancel}
+                      />
+                    </div>
+                  )}
+                  
                   <form onSubmit={sendMessage} className="flex gap-2">
                     <input
                       ref={fileInputRef}
@@ -1009,6 +1091,15 @@ export default function MessagesPage() {
                     />
                     <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                       <ImageIcon className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowAudioRecorder(!showAudioRecorder)}
+                      className={showAudioRecorder ? "bg-blue-100" : ""}
+                    >
+                      <Mic className="h-4 w-4" />
                     </Button>
                     <Input
                       value={newMessage}

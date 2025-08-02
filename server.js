@@ -1,10 +1,26 @@
 const { createServer } = require("http")
 const { Server } = require("socket.io")
 const next = require("next")
+const { MongoClient, ObjectId } = require("mongodb")
 
 const dev = process.env.NODE_ENV !== "production"
 const app = next({ dev })
 const handle = app.getRequestHandler()
+
+// MongoDB connection
+let db
+const connectToMongo = async () => {
+  try {
+    const client = new MongoClient(process.env.MONGODB_URI)
+    await client.connect()
+    db = client.db("socializenow")
+    console.log("Connected to MongoDB")
+  } catch (error) {
+    console.error("MongoDB connection error:", error)
+  }
+}
+
+connectToMongo()
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -21,15 +37,48 @@ app.prepare().then(() => {
   // Store active users
   const activeUsers = new Map()
 
+  // Function to update user online status
+  const updateUserOnlineStatus = async (userId, isOnline) => {
+    if (!db) return
+    
+    try {
+      const now = new Date()
+      const updateData = {
+        lastSeen: now.toISOString(),
+      }
+      
+      if (isOnline) {
+        updateData.isOnline = true
+      }
+      
+      await db.collection("users").updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: updateData }
+      )
+      
+      // Broadcast online status to all connected users
+      io.emit("user-status-changed", {
+        userId,
+        isOnline,
+        lastSeen: now.toISOString()
+      })
+    } catch (error) {
+      console.error("Error updating user online status:", error)
+    }
+  }
+
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id)
 
     // Join user to their room
-    socket.on("join", (userId) => {
+    socket.on("join", async (userId) => {
       socket.join(userId)
       socket.userId = userId
       activeUsers.set(userId, socket.id)
       console.log(`User ${userId} joined room`)
+      
+      // Update user as online
+      await updateUserOnlineStatus(userId, true)
     })
 
     // Handle call initiation
@@ -87,12 +136,21 @@ app.prepare().then(() => {
       })
     })
 
-    socket.on("disconnect", () => {
+    // Handle user activity (keep alive)
+    socket.on("user-activity", async () => {
+      if (socket.userId) {
+        await updateUserOnlineStatus(socket.userId, true)
+      }
+    })
+
+    socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id)
-      // Remove from active users
+      
+      // Remove from active users and mark as offline
       for (const [userId, socketId] of activeUsers.entries()) {
         if (socketId === socket.id) {
           activeUsers.delete(userId)
+          await updateUserOnlineStatus(userId, false)
           break
         }
       }
