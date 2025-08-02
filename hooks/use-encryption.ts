@@ -39,12 +39,16 @@ export function useEncryption(): UseEncryptionReturn {
     }
   }, [])
 
-  // Gerar chaves de criptografia
+  // Gerar chaves de criptografia no cliente
   const generateKeys = useCallback(async (): Promise<boolean> => {
     try {
       const token = localStorage.getItem("token")
       if (!token) return false
 
+      // Gerar chaves no cliente
+      const keyPair = await EndToEndEncryption.generateKeyPair()
+
+      // Armazenar no servidor
       const response = await fetch("/api/encryption-keys", {
         method: "POST",
         headers: {
@@ -52,7 +56,9 @@ export function useEncryption(): UseEncryptionReturn {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          action: "generate_keys",
+          action: "store_keys",
+          publicKey: keyPair.publicKey,
+          privateKey: keyPair.privateKey,
         }),
       })
 
@@ -125,7 +131,7 @@ export function useEncryption(): UseEncryptionReturn {
       // Criptografar mensagem
       const encryptedContent = await EndToEndEncryption.encryptMessage(message, conversationKey)
 
-      // Criptografar chave de conversa para o destinatário
+      // Obter chave pública do destinatário
       const token = localStorage.getItem("token")
       if (!token) return null
 
@@ -136,18 +142,23 @@ export function useEncryption(): UseEncryptionReturn {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          action: "encrypt_conversation_key",
+          action: "get_public_key",
           recipientId,
-          conversationKey,
         }),
       })
 
       if (!response.ok) {
-        console.error("Erro ao criptografar chave de conversa")
+        console.error("Erro ao obter chave pública do destinatário")
         return null
       }
 
-      const { encryptedConversationKey } = await response.json()
+      const { publicKey } = await response.json()
+
+      // Criptografar chave de conversa com chave pública do destinatário
+      const encryptedConversationKey = await EndToEndEncryption.encryptConversationKey(
+        conversationKey,
+        publicKey
+      )
 
       return {
         content: encryptedContent,
@@ -170,7 +181,7 @@ export function useEncryption(): UseEncryptionReturn {
     }
 
     try {
-      // Descriptografar chave de conversa
+      // Obter chave privada do usuário
       const token = localStorage.getItem("token")
       if (!token) return null
 
@@ -181,17 +192,22 @@ export function useEncryption(): UseEncryptionReturn {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          action: "decrypt_conversation_key",
-          conversationKey: encryptedMessage.encryptedConversationKey,
+          action: "get_private_key",
         }),
       })
 
       if (!response.ok) {
-        console.error("Erro ao descriptografar chave de conversa")
+        console.error("Erro ao obter chave privada")
         return null
       }
 
-      const { conversationKey } = await response.json()
+      const { privateKey } = await response.json()
+
+      // Descriptografar chave de conversa com chave privada
+      const conversationKey = await EndToEndEncryption.decryptConversationKey(
+        encryptedMessage.encryptedConversationKey,
+        privateKey
+      )
 
       // Descriptografar mensagem
       const decryptedMessage = await EndToEndEncryption.decryptMessage(

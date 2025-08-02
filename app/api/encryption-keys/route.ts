@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import jwt from "jsonwebtoken"
-import { EndToEndEncryption } from "@/lib/encryption"
 
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization")
@@ -28,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { action, recipientId, conversationKey } = await req.json()
+    const { action, recipientId, conversationKey, publicKey, privateKey } = await req.json()
 
     const client = await clientPromise
     const db = client.db("socializenow")
@@ -36,17 +35,19 @@ export async function POST(req: NextRequest) {
     const encryptionKeysCollection = db.collection("encryption_keys")
 
     switch (action) {
-      case "generate_keys":
-        // Gerar novo par de chaves para o usuário
-        const keyPair = await EndToEndEncryption.generateKeyPair()
+      case "store_keys":
+        // Armazenar chaves geradas no cliente
+        if (!publicKey || !privateKey) {
+          return NextResponse.json({ error: "Chaves pública e privada são obrigatórias." }, { status: 400 })
+        }
         
         await encryptionKeysCollection.updateOne(
           { userId: new ObjectId(userId) },
           {
             $set: {
               userId: new ObjectId(userId),
-              publicKey: keyPair.publicKey,
-              privateKey: keyPair.privateKey, // Em produção, isso deveria ser criptografado
+              publicKey: publicKey,
+              privateKey: privateKey, // Em produção, isso deveria ser criptografado
               createdAt: new Date(),
               updatedAt: new Date(),
             }
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          publicKey: keyPair.publicKey,
+          message: "Chaves armazenadas com sucesso"
         })
 
       case "get_public_key":
@@ -78,36 +79,8 @@ export async function POST(req: NextRequest) {
           publicKey: recipientKeys.publicKey,
         })
 
-      case "encrypt_conversation_key":
-        // Criptografar chave de conversa com chave pública do destinatário
-        if (!recipientId || !conversationKey) {
-          return NextResponse.json({ error: "ID do destinatário e chave de conversa são obrigatórios." }, { status: 400 })
-        }
-
-        const recipientPublicKey = await encryptionKeysCollection.findOne({
-          userId: new ObjectId(recipientId)
-        })
-
-        if (!recipientPublicKey) {
-          return NextResponse.json({ error: "Chave pública do destinatário não encontrada." }, { status: 404 })
-        }
-
-        const encryptedKey = await EndToEndEncryption.encryptConversationKey(
-          conversationKey,
-          recipientPublicKey.publicKey
-        )
-
-        return NextResponse.json({
-          success: true,
-          encryptedConversationKey: encryptedKey,
-        })
-
-      case "decrypt_conversation_key":
-        // Descriptografar chave de conversa com chave privada
-        if (!conversationKey) {
-          return NextResponse.json({ error: "Chave de conversa criptografada é obrigatória." }, { status: 400 })
-        }
-
+      case "get_private_key":
+        // Obter chave privada do usuário atual
         const userKeys = await encryptionKeysCollection.findOne({
           userId: new ObjectId(userId)
         })
@@ -116,14 +89,9 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Chaves de criptografia não encontradas." }, { status: 404 })
         }
 
-        const decryptedKey = await EndToEndEncryption.decryptConversationKey(
-          conversationKey,
-          userKeys.privateKey
-        )
-
         return NextResponse.json({
           success: true,
-          conversationKey: decryptedKey,
+          privateKey: userKeys.privateKey,
         })
 
       default:

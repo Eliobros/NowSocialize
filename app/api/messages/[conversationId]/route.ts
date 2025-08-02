@@ -21,7 +21,7 @@ function verifyToken(request: NextRequest) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { conversationId: string } }
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   try {
     const user = verifyToken(request)
@@ -29,7 +29,7 @@ export async function GET(
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const { conversationId } = params
+    const { conversationId } = await params
     if (!conversationId) {
       return NextResponse.json({ error: "ID da conversa é obrigatório" }, { status: 400 })
     }
@@ -67,6 +67,9 @@ export async function GET(
           $project: {
             content: 1,
             image: 1,
+            audioUrl: 1,
+            type: 1,
+            duration: 1,
             read: 1,
             createdAt: 1,
             "sender._id": 1,

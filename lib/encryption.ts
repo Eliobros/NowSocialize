@@ -4,8 +4,28 @@ export class EndToEndEncryption {
   private static readonly KEY_LENGTH = 256
   private static readonly IV_LENGTH = 12
 
+  // Verificar se estamos no navegador
+  private static isBrowser(): boolean {
+    return typeof window !== "undefined" && typeof window.crypto !== "undefined"
+  }
+
+  // Obter crypto API (browser ou Node.js)
+  private static getCrypto(): Crypto {
+    if (this.isBrowser()) {
+      return window.crypto
+    } else {
+      // Para Node.js, usar crypto nativo
+      const crypto = require("crypto")
+      return crypto.webcrypto || crypto
+    }
+  }
+
   // Gerar par de chaves para um usuário
   static async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
+    if (!this.isBrowser()) {
+      throw new Error("Geração de chaves só é suportada no navegador por questões de segurança")
+    }
+
     const keyPair = await window.crypto.subtle.generateKey(
       {
         name: "RSA-OAEP",
@@ -28,6 +48,10 @@ export class EndToEndEncryption {
 
   // Gerar chave simétrica para uma conversa
   static async generateConversationKey(): Promise<string> {
+    if (!this.isBrowser()) {
+      throw new Error("Geração de chaves só é suportada no navegador por questões de segurança")
+    }
+
     const key = await window.crypto.subtle.generateKey(
       {
         name: this.ALGORITHM,
@@ -43,6 +67,10 @@ export class EndToEndEncryption {
 
   // Criptografar mensagem
   static async encryptMessage(message: string, conversationKey: string): Promise<string> {
+    if (!this.isBrowser()) {
+      throw new Error("Criptografia só é suportada no navegador por questões de segurança")
+    }
+
     const keyBuffer = this.base64ToArrayBuffer(conversationKey)
     const key = await window.crypto.subtle.importKey(
       "raw",
@@ -74,6 +102,10 @@ export class EndToEndEncryption {
 
   // Descriptografar mensagem
   static async decryptMessage(encryptedMessage: string, conversationKey: string): Promise<string> {
+    if (!this.isBrowser()) {
+      throw new Error("Descriptografia só é suportada no navegador por questões de segurança")
+    }
+
     const keyBuffer = this.base64ToArrayBuffer(conversationKey)
     const key = await window.crypto.subtle.importKey(
       "raw",
@@ -104,6 +136,10 @@ export class EndToEndEncryption {
     conversationKey: string,
     recipientPublicKey: string
   ): Promise<string> {
+    if (!this.isBrowser()) {
+      throw new Error("Criptografia só é suportada no navegador por questões de segurança")
+    }
+
     const publicKeyBuffer = this.base64ToArrayBuffer(recipientPublicKey)
     const publicKey = await window.crypto.subtle.importKey(
       "spki",
@@ -133,6 +169,10 @@ export class EndToEndEncryption {
     encryptedConversationKey: string,
     privateKey: string
   ): Promise<string> {
+    if (!this.isBrowser()) {
+      throw new Error("Descriptografia só é suportada no navegador por questões de segurança")
+    }
+
     const privateKeyBuffer = this.base64ToArrayBuffer(privateKey)
     const key = await window.crypto.subtle.importKey(
       "pkcs8",
