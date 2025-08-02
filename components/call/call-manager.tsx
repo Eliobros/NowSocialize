@@ -24,6 +24,7 @@ export function CallManager({ currentUserId, currentUserName }: CallManagerProps
     isVideoEnabled,
     callDuration,
     participants,
+    connectionStatus,
     startCall,
     acceptCall,
     rejectCall,
@@ -62,7 +63,12 @@ export function CallManager({ currentUserId, currentUserName }: CallManagerProps
     <>
       {/* Incoming Call Modal */}
       {incomingCall && (
-        <IncomingCall callerName={incomingCall.callerName} onAccept={acceptCall} onReject={rejectCall} />
+        <IncomingCall 
+          callerName={incomingCall.callerName} 
+          callType={incomingCall.callType}
+          onAccept={acceptCall} 
+          onReject={rejectCall} 
+        />
       )}
 
       {/* Active Call Interface */}
@@ -74,6 +80,7 @@ export function CallManager({ currentUserId, currentUserName }: CallManagerProps
           duration={callDuration}
           isMuted={isMuted}
           isVideoEnabled={isVideoEnabled}
+          connectionStatus={connectionStatus}
           onEndCall={endCall}
           onToggleMute={toggleMute}
           onToggleVideo={toggleVideo}

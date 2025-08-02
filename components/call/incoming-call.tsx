@@ -2,15 +2,16 @@
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Phone, PhoneOff } from "lucide-react"
+import { Phone, PhoneOff, Video, Mic } from "lucide-react"
 
 interface IncomingCallProps {
   callerName: string
+  callType?: "audio" | "video"
   onAccept: () => void
   onReject: () => void
 }
 
-export function IncomingCall({ callerName, onAccept, onReject }: IncomingCallProps) {
+export function IncomingCall({ callerName, callType = "video", onAccept, onReject }: IncomingCallProps) {
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -18,6 +19,14 @@ export function IncomingCall({ callerName, onAccept, onReject }: IncomingCallPro
       .join("")
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  const getCallTypeIcon = () => {
+    return callType === "video" ? <Video className="h-6 w-6" /> : <Mic className="h-6 w-6" />
+  }
+
+  const getCallTypeText = () => {
+    return callType === "video" ? "Chamada de vídeo" : "Chamada de áudio"
   }
 
   return (
@@ -28,6 +37,10 @@ export function IncomingCall({ callerName, onAccept, onReject }: IncomingCallPro
             <AvatarFallback className="bg-blue-600 text-white text-2xl">{getInitials(callerName)}</AvatarFallback>
           </Avatar>
           <h2 className="text-2xl font-semibold mb-2">{callerName}</h2>
+          <div className="flex items-center justify-center gap-2 text-gray-600 dark:text-gray-400 mb-2">
+            {getCallTypeIcon()}
+            <span>{getCallTypeText()}</span>
+          </div>
           <p className="text-gray-600 dark:text-gray-400">Chamada recebida...</p>
         </div>
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Phone, Mic, MicOff, Video, VideoOff, UserPlus, Maximize2 } from "lucide-react"
+import { Phone, Mic, MicOff, Video, VideoOff, UserPlus, Maximize2, Wifi, WifiOff, AlertCircle } from "lucide-react"
 
 interface Participant {
   userId: string
@@ -18,6 +18,7 @@ interface ActiveCallProps {
   duration: number
   isMuted: boolean
   isVideoEnabled: boolean
+  connectionStatus?: "connecting" | "connected" | "disconnected" | "error"
   onEndCall: () => void
   onToggleMute: () => void
   onToggleVideo: () => void
@@ -31,6 +32,7 @@ export function ActiveCall({
   duration,
   isMuted,
   isVideoEnabled,
+  connectionStatus = "connected",
   onEndCall,
   onToggleMute,
   onToggleVideo,
@@ -58,6 +60,35 @@ export function ActiveCall({
       .join("")
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  const getConnectionStatusIcon = () => {
+    switch (connectionStatus) {
+      case "connected":
+        return <Wifi className="h-4 w-4 text-green-500" />
+      case "connecting":
+        return <Wifi className="h-4 w-4 text-yellow-500 animate-pulse" />
+      case "disconnected":
+      case "error":
+        return <WifiOff className="h-4 w-4 text-red-500" />
+      default:
+        return <Wifi className="h-4 w-4 text-gray-500" />
+    }
+  }
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case "connected":
+        return "Conectado"
+      case "connecting":
+        return "Conectando..."
+      case "disconnected":
+        return "Desconectado"
+      case "error":
+        return "Erro de conexão"
+      default:
+        return "Desconhecido"
+    }
   }
 
   const VideoStream = ({
@@ -96,6 +127,11 @@ export function ActiveCall({
             <MicOff className="h-4 w-4" />
           </div>
         )}
+        {!stream && !isLocal && (
+          <div className="absolute top-2 right-2 bg-yellow-500 text-white p-1 rounded">
+            <AlertCircle className="h-4 w-4" />
+          </div>
+        )}
       </div>
     )
   }
@@ -108,7 +144,13 @@ export function ActiveCall({
           <h2 className="text-xl font-semibold">
             {participants.length === 1 ? participants[0].name : `Chamada em grupo (${participants.length + 1})`}
           </h2>
-          <p className="text-gray-300">{formatDuration(duration)}</p>
+          <div className="flex items-center gap-2 text-gray-300">
+            <span>{formatDuration(duration)}</span>
+            <div className="flex items-center gap-1">
+              {getConnectionStatusIcon()}
+              <span className="text-xs">{getConnectionStatusText()}</span>
+            </div>
+          </div>
         </div>
         <Button
           variant="ghost"
@@ -163,6 +205,7 @@ export function ActiveCall({
           size="lg"
           onClick={onToggleMute}
           className="rounded-full h-14 w-14 p-0"
+          disabled={connectionStatus === "disconnected" || connectionStatus === "error"}
         >
           {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
         </Button>
@@ -172,11 +215,18 @@ export function ActiveCall({
           size="lg"
           onClick={onToggleVideo}
           className="rounded-full h-14 w-14 p-0"
+          disabled={connectionStatus === "disconnected" || connectionStatus === "error"}
         >
           {isVideoEnabled ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
         </Button>
 
-        <Button variant="secondary" size="lg" onClick={onAddParticipant} className="rounded-full h-14 w-14 p-0">
+        <Button 
+          variant="secondary" 
+          size="lg" 
+          onClick={onAddParticipant} 
+          className="rounded-full h-14 w-14 p-0"
+          disabled={connectionStatus === "disconnected" || connectionStatus === "error"}
+        >
           <UserPlus className="h-6 w-6" />
         </Button>
 

@@ -30,8 +30,10 @@ interface UseWebRTCReturn {
     from: string
     callerName: string
     callId: string
+    callType?: "audio" | "video"
   } | null
   startCallWithType: (userId: string, userName: string, callType: "audio" | "video") => void
+  connectionStatus: "connecting" | "connected" | "disconnected" | "error"
 }
 
 export function useWebRTC(currentUserId: string, currentUserName: string): UseWebRTCReturn {
@@ -42,149 +44,218 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [callDuration, setCallDuration] = useState(0)
   const [participants, setParticipants] = useState<CallUser[]>([])
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "disconnected" | "error">("disconnected")
   const [incomingCall, setIncomingCall] = useState<{
     from: string
     callerName: string
     callId: string
+    callType?: "audio" | "video"
   } | null>(null)
 
   const peersRef = useRef<Map<string, Peer.Instance>>(new Map())
   const callTimerRef = useRef<NodeJS.Timeout>()
   const currentCallId = useRef<string>("")
-useEffect(() => {
-  const socket = socketService.connect(currentUserId)
+  const callStartTime = useRef<number>(0)
 
-  socket.on("incoming-call", (data) => {
-    setIncomingCall(data)
-  })
+  useEffect(() => {
+    const socket = socketService.connect(currentUserId)
 
-  socket.on("call-accepted", (data) => {
-    const peer = peersRef.current.get(data.callId)
-    if (peer) {
-      peer.signal(data.signal)
+    socket.on("connect", () => {
+      setConnectionStatus("connected")
+    })
+
+    socket.on("disconnect", () => {
+      setConnectionStatus("disconnected")
+    })
+
+    socket.on("connect_error", () => {
+      setConnectionStatus("error")
+    })
+
+    socket.on("incoming-call", (data) => {
+      setIncomingCall(data)
+    })
+
+    socket.on("call-accepted", (data) => {
+      const peer = peersRef.current.get(data.callId)
+      if (peer) {
+        peer.signal(data.signal)
+      }
+      // Iniciar timer quando a chamada for aceita
+      if (!callTimerRef.current) {
+        startCallTimer()
+      }
+    })
+
+    socket.on("call-rejected", () => {
+      setIncomingCall(null)
+      endCall()
+    })
+
+    socket.on("call-ended", () => {
+      endCall()
+    })
+
+    socket.on("webrtc-signal", (data) => {
+      const peer = peersRef.current.get(data.from)
+      if (peer) {
+        peer.signal(data.signal)
+      }
+    })
+
+    return () => {
+      socket.off("connect")
+      socket.off("disconnect")
+      socket.off("connect_error")
+      socket.off("incoming-call")
+      socket.off("call-accepted")
+      socket.off("call-rejected")
+      socket.off("call-ended")
+      socket.off("webrtc-signal")
     }
-  })
+  }, [currentUserId])
 
-  socket.on("call-rejected", () => {
-    setIncomingCall(null)
-    endCall()
-  })
+  const startCallTimer = useCallback(() => {
+    callStartTime.current = Date.now()
+    callTimerRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000)
+      setCallDuration(elapsed)
+    }, 1000)
+  }, [])
 
-  socket.on("call-ended", () => {
-    endCall()
-  })
-
-  socket.on("webrtc-signal", (data) => {
-    const peer = peersRef.current.get(data.from)
-    if (peer) {
-      peer.signal(data.signal)
+  const stopCallTimer = useCallback(() => {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current)
+      callTimerRef.current = undefined
     }
-  })
+    setCallDuration(0)
+    callStartTime.current = 0
+  }, [])
 
-  return () => {
-    socket.off("incoming-call")
-    socket.off("call-accepted")
-    socket.off("call-rejected")
-    socket.off("call-ended")
-    socket.off("webrtc-signal")
-  }
-}, [currentUserId])
+  const getUserMedia = useCallback(async (callType: "audio" | "video" = "video") => {
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      console.warn("getUserMedia não está disponível neste ambiente.")
+      return null
+    }
 
-const startCallTimer = useCallback(() => {
-  callTimerRef.current = setInterval(() => {
-    setCallDuration((prev) => prev + 1)
-  }, 1000)
-}, [])
+    try {
+      const constraints = {
+        video: callType === "video",
+        audio: true,
+      }
 
-const stopCallTimer = useCallback(() => {
-  if (callTimerRef.current) {
-    clearInterval(callTimerRef.current)
-    callTimerRef.current = undefined
-  }
-  setCallDuration(0)
-}, [])
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      setLocalStream(stream)
+      setIsVideoEnabled(callType === "video")
+      return stream
+    } catch (error) {
+      console.error("Erro ao acessar dispositivos de mídia:", error)
+      
+      // Fallback: tentar apenas áudio se vídeo falhar
+      if (callType === "video") {
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          setLocalStream(audioStream)
+          setIsVideoEnabled(false)
+          return audioStream
+        } catch (audioError) {
+          console.error("Erro ao acessar áudio:", audioError)
+        }
+      }
+      
+      return null
+    }
+  }, [])
 
-const getUserMedia = useCallback(async () => {
-  if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-    console.warn("getUserMedia não está disponível neste ambiente.")
-    return null
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    })
-    setLocalStream(stream)
-    return stream
-  } catch (error) {
-    console.error("Erro ao acessar dispositivos de mídia:", error)
-    return null
-  }
-}, [])
-
-const createPeer = useCallback(
-  (userId: string, initiator: boolean, stream: MediaStream) => {
-    const peer = new Peer({
-      initiator,
-      trickle: false,
-      stream,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-        ],
-      },
-    })
-
-    peer.on("signal", (signal) => {
-      const socket = socketService.getSocket()
-      socket?.emit("webrtc-signal", {
-        to: userId,
-        signal,
-        callId: currentCallId.current,
+  const createPeer = useCallback(
+    (userId: string, initiator: boolean, stream: MediaStream) => {
+      const peer = new Peer({
+        initiator,
+        trickle: false,
+        stream,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
+            { urls: "stun:stun4.l.google.com:19302" },
+          ],
+        },
       })
-    })
 
-    peer.on("stream", (remoteStream) => {
-      setRemoteStreams((prev) => {
-        const newMap = new Map(prev)
-        newMap.set(userId, remoteStream)
-        return newMap
+      peer.on("signal", (signal) => {
+        const socket = socketService.getSocket()
+        if (socket?.connected) {
+          socket.emit("webrtc-signal", {
+            to: userId,
+            signal,
+            callId: currentCallId.current,
+          })
+        }
       })
-    })
 
-    peer.on("close", () => {
-      setRemoteStreams((prev) => {
-        const newMap = new Map(prev)
-        newMap.delete(userId)
-        return newMap
+      peer.on("stream", (remoteStream) => {
+        setRemoteStreams((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(userId, remoteStream)
+          return newMap
+        })
       })
-      peersRef.current.delete(userId)
-    })
 
-    peersRef.current.set(userId, peer)
-    return peer
-  },
-  []
-)
+      peer.on("connect", () => {
+        console.log(`Peer connection established with ${userId}`)
+      })
+
+      peer.on("error", (error) => {
+        console.error(`Peer connection error with ${userId}:`, error)
+        // Tentar reconectar em caso de erro
+        setTimeout(() => {
+          if (peersRef.current.has(userId)) {
+            const newPeer = createPeer(userId, initiator, stream)
+            peersRef.current.set(userId, newPeer)
+          }
+        }, 2000)
+      })
+
+      peer.on("close", () => {
+        console.log(`Peer connection closed with ${userId}`)
+        setRemoteStreams((prev) => {
+          const newMap = new Map(prev)
+          newMap.delete(userId)
+          return newMap
+        })
+        peersRef.current.delete(userId)
+      })
+
+      peersRef.current.set(userId, peer)
+      return peer
+    },
+    []
+  )
 
   const startCall = useCallback(
     async (userId: string, userName: string) => {
-      const stream = await getUserMedia()
-      if (!stream) return
+      const stream = await getUserMedia("video")
+      if (!stream) {
+        alert("Não foi possível acessar a câmera e microfone. Verifique as permissões.")
+        return
+      }
 
       currentCallId.current = `${currentUserId}-${userId}-${Date.now()}`
       const peer = createPeer(userId, true, stream)
 
       peer.on("signal", (signal) => {
         const socket = socketService.getSocket()
-        socket?.emit("call-user", {
-          to: userId,
-          from: currentUserId,
-          signal,
-          callerName: currentUserName,
-        })
+        if (socket?.connected) {
+          socket.emit("call-user", {
+            to: userId,
+            from: currentUserId,
+            signal,
+            callerName: currentUserName,
+            callType: "video",
+          })
+        }
       })
 
       setIsCallActive(true)
@@ -195,16 +266,10 @@ const createPeer = useCallback(
 
   const startCallWithType = useCallback(
     async (userId: string, userName: string, callType: "audio" | "video") => {
-      const stream = await getUserMedia()
-      if (!stream) return
-
-      // Se for chamada de áudio, desabilitar vídeo
-      if (callType === "audio") {
-        const videoTrack = stream.getVideoTracks()[0]
-        if (videoTrack) {
-          videoTrack.enabled = false
-          setIsVideoEnabled(false)
-        }
+      const stream = await getUserMedia(callType)
+      if (!stream) {
+        alert(`Não foi possível acessar ${callType === "video" ? "a câmera e " : ""}o microfone. Verifique as permissões.`)
+        return
       }
 
       currentCallId.current = `${currentUserId}-${userId}-${Date.now()}`
@@ -212,13 +277,15 @@ const createPeer = useCallback(
 
       peer.on("signal", (signal) => {
         const socket = socketService.getSocket()
-        socket?.emit("call-user", {
-          to: userId,
-          from: currentUserId,
-          signal,
-          callerName: currentUserName,
-          callType,
-        })
+        if (socket?.connected) {
+          socket.emit("call-user", {
+            to: userId,
+            from: currentUserId,
+            signal,
+            callerName: currentUserName,
+            callType,
+          })
+        }
       })
 
       setIsCallActive(true)
@@ -230,19 +297,25 @@ const createPeer = useCallback(
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return
 
-    const stream = await getUserMedia()
-    if (!stream) return
+    const callType = incomingCall.callType || "video"
+    const stream = await getUserMedia(callType)
+    if (!stream) {
+      alert(`Não foi possível acessar ${callType === "video" ? "a câmera e " : ""}o microfone. Verifique as permissões.`)
+      return
+    }
 
     currentCallId.current = incomingCall.callId
     const peer = createPeer(incomingCall.from, false, stream)
 
     peer.on("signal", (signal) => {
       const socket = socketService.getSocket()
-      socket?.emit("accept-call", {
-        to: incomingCall.from,
-        signal,
-        callId: incomingCall.callId,
-      })
+      if (socket?.connected) {
+        socket.emit("accept-call", {
+          to: incomingCall.from,
+          signal,
+          callId: incomingCall.callId,
+        })
+      }
     })
 
     setIsCallActive(true)
@@ -255,10 +328,12 @@ const createPeer = useCallback(
     if (!incomingCall) return
 
     const socket = socketService.getSocket()
-    socket?.emit("reject-call", {
-      to: incomingCall.from,
-      callId: incomingCall.callId,
-    })
+    if (socket?.connected) {
+      socket.emit("reject-call", {
+        to: incomingCall.from,
+        callId: incomingCall.callId,
+      })
+    }
 
     setIncomingCall(null)
   }, [incomingCall])
@@ -267,10 +342,12 @@ const createPeer = useCallback(
     // Notify other participants
     participants.forEach((participant) => {
       const socket = socketService.getSocket()
-      socket?.emit("end-call", {
-        to: participant.userId,
-        callId: currentCallId.current,
-      })
+      if (socket?.connected) {
+        socket.emit("end-call", {
+          to: participant.userId,
+          callId: currentCallId.current,
+        })
+      }
     })
 
     // Close all peer connections
@@ -315,15 +392,24 @@ const createPeer = useCallback(
   const addParticipant = useCallback(
     (userId: string, userName: string) => {
       const socket = socketService.getSocket()
-      socket?.emit("invite-to-call", {
-        to: userId,
-        from: currentUserId,
-        callId: currentCallId.current,
-        callerName: currentUserName,
-      })
+      if (socket?.connected) {
+        socket.emit("invite-to-call", {
+          to: userId,
+          from: currentUserId,
+          callId: currentCallId.current,
+          callerName: currentUserName,
+        })
+      }
     },
     [currentUserId, currentUserName],
   )
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      endCall()
+    }
+  }, [endCall])
 
   return {
     localStream,
@@ -342,5 +428,6 @@ const createPeer = useCallback(
     addParticipant,
     incomingCall,
     startCallWithType,
+    connectionStatus,
   }
 }
