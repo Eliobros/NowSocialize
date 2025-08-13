@@ -39,21 +39,31 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   const [isLiking, setIsLiking] = useState(false)
   const [isMuted, setIsMuted] = useState(true)
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false)
   const [showCommentsModal, setShowCommentsModal] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   // Controlar reprodução baseado no isActive
   useEffect(() => {
-    if (videoRef.current) {
+    const video = videoRef.current
+    
+    if (video) {
       if (isActive) {
-        // Quando o reel fica ativo, sempre tenta tocar
         setIsPlaying(true)
-        videoRef.current.play().catch(console.error)
+        video.play().catch(console.error)
       } else {
-        // Quando não está ativo, pausa
-        videoRef.current.pause()
+        // Cleanup mais completo
+        video.pause()
+        video.currentTime = 0 // Reset posição
         setIsPlaying(false)
+      }
+    }
+
+    // Cleanup quando componente desmonta
+    return () => {
+      if (video) {
+        video.pause()
+        video.currentTime = 0
       }
     }
   }, [isActive])
@@ -79,7 +89,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   }
 
   const togglePlayPause = () => {
-    if (videoRef.current) {
+    if (videoRef.current && isActive) {
       if (isPlaying) {
         videoRef.current.pause()
       } else {
@@ -175,9 +185,9 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
           src={reel.videoUrl}
           className="w-full h-full object-cover cursor-pointer"
           loop
-          autoPlay={isActive}
           muted={isMuted}
           playsInline
+          preload="none"
           onClick={togglePlayPause}
           onPlay={() => {
             setIsPlaying(true)
@@ -187,7 +197,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
           }}
           onPause={() => setIsPlaying(false)}
         />
-        
+
         {/* Controle de Som */}
         <Button
           variant="ghost"
@@ -253,7 +263,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
           </Button>
         </div>
       </CardContent>
-      
+
       {/* Modal da Foto de Perfil */}
       <Dialog open={showProfileModal} onOpenChange={setShowProfileModal}>
         <DialogContent className="max-w-md mx-auto bg-white rounded-lg">
@@ -328,4 +338,3 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
     </Card>
   )
 }
-
