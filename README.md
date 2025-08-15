@@ -2,7 +2,7 @@
 
 <img src="https://readme-typing-svg.herokuapp.com/?font=mono&size=30&duration=4000&color=FF0000&center=falso&vCenter=falso&lines=🜛+SocializeNow+۞;">      
 
-SocializeNow é uma rede social moderna desenvolvida com tecnologias web de ponta. Permite que usuários criem perfis, publiquem atualizações, sigam outros usuários, interajam com posts em tempo real e iniciem conversas privadas — tudo com uma experiência fluida e responsiva.
+SocializeNow é uma rede social moçambicana moderna desenvolvida pela empresa Eliobros Tech, com tecnologias web de ponta. Permite que usuários criem perfis, publiquem atualizações, sigam outros usuários, interajam com posts em tempo real e iniciem conversas privadas — tudo com uma experiência fluida e responsiva.
 
 
 ---
@@ -14,6 +14,8 @@ SocializeNow é uma rede social moderna desenvolvida com tecnologias web de pont
 - ⚡ Comunicação em tempo real: Socket.IO
 - 🔒 Autenticação: JWT
 - ☁️ Hospedagem: VPS Linux + Vercel
+- ☁ Midia: AWS S3 + CLOUDINARY
+- ✉ Email: Brevo + MailerSend
 
 
 ---
@@ -28,36 +30,9 @@ SocializeNow é uma rede social moderna desenvolvida com tecnologias web de pont
 - 🔍 Busca de usuários
 - 👥 Seguir e deixar de seguir usuários
 - 📥 Chat privado com início de conversa
-
-
----
-
-🛠️ Instalação e Execução Local
-
-# Clone o projeto
-git clone https://github.com/seu-usuario/socializenow.git
-cd socializenow
-
-# Instale as dependências do backend
-cd backend
-npm install
-npm run dev
-
-# Em outra aba, instale e inicie o frontend
-cd frontend
-npm install
-npm run dev
-
-Configure as variáveis de ambiente nos arquivos .env e .env.local.
-
-
----
-
-🌐 Deploy
-
-- Backend: [Seu VPS em http://108.181.199.60:3000]
-- Frontend: https://socialize-now.com
-
+- 🔔 Notificações em tempo real
+- 📽 Stories e Reels (reels em desenvolvimento)
+- 🔒 Criptografia ponta-a-ponta nas mensagens
 
 ---
 
@@ -65,8 +40,9 @@ Configure as variáveis de ambiente nos arquivos .env e .env.local.
 
 - 📱 Versão mobile com PWA
 - 🧠 Integração com IA para geração de conteúdo ou sugestões
-- 🛎️ Notificações em tempo real
 - 📊 Estatísticas de engajamento por usuário
+- 📞 Chamadas de video e voz 
+- 🎤  Suporte ao envio de audio
 
 
 ---
@@ -74,7 +50,7 @@ Configure as variáveis de ambiente nos arquivos .env e .env.local.
 👤 Desenvolvedor
 
 Desenvolvido por [Habibo Salimo Julio](mailto:eliobrostech3@gmail.com)  
-CEO da [Eliobros Tech](https://github.com/eliobrostech)
+CEO da [Eliobros Tech](https://github.com/Eliobros)
 
 
 ---
