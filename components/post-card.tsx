@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
-import { Heart, MessageCircle, Share, Send, CheckCircle, X } from "lucide-react"
+import { Heart, MessageCircle, Share, Send, CheckCircle, X, MoreHorizontal, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
 
@@ -39,9 +40,11 @@ interface Comment {
 
 interface PostCardProps {
   post: Post
+  currentUserId?: string
+  onPostDeleted?: (postId: string) => void
 }
 
-export function PostCard({ post }: PostCardProps) {
+export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) {
   const [liked, setLiked] = useState(post.likedByUser)
   const [likeCount, setLikeCount] = useState(post.likes || 0)
   const [commentCount, setCommentCount] = useState(post.commentsCount || 0)
@@ -52,6 +55,8 @@ export function PostCard({ post }: PostCardProps) {
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [showCommentsDialog, setShowCommentsDialog] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const getInitials = (name: string) => {
     return name
@@ -184,6 +189,32 @@ export function PostCard({ post }: PostCardProps) {
     setShowShareDialog(false)
   }
 
+  const handleDeletePost = async () => {
+    setIsDeleting(true)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/posts/${post._id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setShowDeleteConfirm(false)
+        onPostDeleted?.(post._id)
+      } else {
+        const errorData = await response.json().catch(() => ({ error: "Erro desconhecido" }))
+        alert(`Erro ao deletar post: ${errorData.error}`)
+      }
+    } catch (error) {
+      console.error("Erro ao deletar post:", error)
+      alert("Erro de conexão ao deletar post")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <Card className="w-full overflow-hidden">
       <CardHeader className="pb-3">
@@ -197,7 +228,7 @@ export function PostCard({ post }: PostCardProps) {
             ) : null}
             <AvatarFallback className="bg-blue-600 text-white">{getInitials(post.author.name)}</AvatarFallback>
           </Avatar>
-          <div>
+          <div className="flex-1">
             <Link
               href={`/profile/${post.author._id}`}
               className="font-semibold hover:text-blue-600 transition-colors flex items-center gap-1"
@@ -208,6 +239,25 @@ export function PostCard({ post }: PostCardProps) {
             </Link>
             <p className="text-sm text-muted-foreground">{formatDate(post.createdAt)}</p>
           </div>
+          {/* Menu de opções - só aparece se for o autor do post */}
+          {currentUserId === post.author._id && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir post
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </CardHeader>
       <CardContent className="pt-0">
@@ -357,6 +407,36 @@ export function PostCard({ post }: PostCardProps) {
                 Ver Perfil Completo
               </Button>
             </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir post</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Tem certeza de que deseja excluir este post? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeletePost}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

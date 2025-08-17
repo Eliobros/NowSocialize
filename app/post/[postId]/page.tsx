@@ -59,13 +59,13 @@ export async function generateMetadata({ params }: { params: { postId: string } 
     }
   }
 
-  const postUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/post/${post._id}`
+  const postUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://socializenow.vercel.app'}/post/${post._id}`
   const authorName = post.author.name
   const postContent = post.content || 'Veja este post no SocializeNow'
   const description = postContent.length > 160 ? postContent.substring(0, 157) + '...' : postContent
 
   // Escolhe a melhor imagem para preview
-  const imageUrl = post.image || post.author.avatar || `${process.env.NEXT_PUBLIC_SITE_URL}/default-post.png`
+  const imageUrl = post.image || post.author.avatar || `${process.env.NEXT_PUBLIC_SITE_URL || 'https://socializenow.vercel.app'}/default-post.png`
 
   const title = `${authorName} ${post.author.isVerified ? '✓' : ''} no SocializeNow`
 

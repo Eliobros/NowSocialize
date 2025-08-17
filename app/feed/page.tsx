@@ -27,6 +27,7 @@ interface Post {
 
 // Adicione uma interface para os dados do usuário que você espera de /api/me
 interface UserData {
+  _id: string
   name: string
   email: string
   username: string
@@ -129,6 +130,10 @@ export default function FeedPage() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
+  }
+
+  const handlePostDeleted = (postId: string) => {
+    setPosts(prevPosts => prevPosts.filter(post => post._id !== postId))
   }
 
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -330,7 +335,14 @@ export default function FeedPage() {
               </CardContent>
             </Card>
           ) : (
-            posts.map((post) => <PostCard key={post._id} post={post} />)
+            posts.map((post) => (
+              <PostCard 
+                key={post._id} 
+                post={post} 
+                currentUserId={user?._id}
+                onPostDeleted={handlePostDeleted}
+              />
+            ))
           )}
         </div>
       </div>
