@@ -102,8 +102,6 @@ export default function MessagesPage() {
   const [isUserScrolling, setIsUserScrolling] = useState(false)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
 
-  const [showCallConfirm, setShowCallConfirm] = useState(false)
-  
   // Encryption hook
   const { isEncryptionEnabled, hasKeys, generateKeys, setupConversation } = useEncryption()
   const [pendingCallType, setPendingCallType] = useState<"audio" | "video" | null>(null)
