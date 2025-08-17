@@ -34,6 +34,12 @@ export async function GET(
     const posts = db.collection("posts");
 
     const userId = new ObjectId(user.userId);
+    
+    // Validar se o postId é um ObjectId válido
+    if (!ObjectId.isValid(params.postId)) {
+      return NextResponse.json({ error: "ID do post inválido" }, { status: 400 });
+    }
+    
     const postId = new ObjectId(params.postId);
 
     const postResult = await posts
@@ -116,6 +122,55 @@ export async function GET(
     return NextResponse.json({ post });
   } catch (error) {
     console.error("Get post error:", error);
+    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { postId: string } }
+) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db("socializenow");
+    const posts = db.collection("posts");
+
+    const userId = new ObjectId(user.userId);
+    
+    // Validar se o postId é um ObjectId válido
+    if (!ObjectId.isValid(params.postId)) {
+      return NextResponse.json({ error: "ID do post inválido" }, { status: 400 });
+    }
+    
+    const postId = new ObjectId(params.postId);
+
+    // Primeiro, verificar se o post existe e se o usuário é o autor
+    const existingPost = await posts.findOne({ _id: postId });
+    
+    if (!existingPost) {
+      return NextResponse.json({ error: "Post não encontrado" }, { status: 404 });
+    }
+
+    // Verificar se o usuário é o autor do post
+    if (!existingPost.authorId.equals(userId)) {
+      return NextResponse.json({ error: "Você não tem permissão para excluir este post" }, { status: 403 });
+    }
+
+    // Deletar o post
+    await posts.deleteOne({ _id: postId });
+
+    // Também deletar likes e comentários relacionados
+    await db.collection("likes").deleteMany({ postId });
+    await db.collection("comments").deleteMany({ postId });
+
+    return NextResponse.json({ message: "Post excluído com sucesso" });
+  } catch (error) {
+    console.error("Delete post error:", error);
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
   }
 }

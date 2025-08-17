@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "cleanup-accounts": "node scripts/cleanup-accounts.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.844.0",

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Search, Bell, MessageSquare, User, Video, Menu } from "lucide-react"
+import { Home, Search, Bell, MessageSquare, User, Video, Menu, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -69,6 +69,7 @@ export function Navbar() {
     { href: "/feed", icon: Home, label: "Início" },
     { href: "/notifications", icon: Bell, label: "Notificações" },
     { href: "/reels", icon: Video, label: "Reels" },
+    { href: "/pages", icon: FileText, label: "Páginas" },
     { href: "/search", icon: Search, label: "Buscar" },
     { href: "/profile", icon: User, label: "Perfil" },
   ]

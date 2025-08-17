@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { CheckCircle, Shield, HelpCircle, Loader2, Upload } from "lucide-react"
+import { CheckCircle, Shield, HelpCircle, Loader2, Upload, Trash2, UserX, AlertTriangle } from "lucide-react"
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)
@@ -41,6 +41,16 @@ export default function SettingsPage() {
     message: "",
   })
 
+  // Estados para gerenciamento de conta
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false)
+  const [accountStatus, setAccountStatus] = useState({
+    isDeactivated: false,
+    markedForDeletion: false,
+    deletionDate: null as string | null,
+    daysRemaining: 0
+  })
+
   useEffect(() => {
     const token = localStorage.getItem("token")
     if (!token) {
@@ -66,6 +76,16 @@ export default function SettingsPage() {
           ...prev,
           fullName: data.profile.name,
         }))
+        
+        // Atualizar status da conta
+        setAccountStatus({
+          isDeactivated: data.profile.isDeactivated || false,
+          markedForDeletion: data.profile.markedForDeletion || false,
+          deletionDate: data.profile.deletionScheduledAt || null,
+          daysRemaining: data.profile.deletionScheduledAt 
+            ? Math.ceil((new Date(data.profile.deletionScheduledAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+            : 0
+        })
       }
     } catch (error) {
       setError("Erro ao carregar dados do usuário")
@@ -151,6 +171,94 @@ export default function SettingsPage() {
     }
   }
 
+  const handleDeleteAccount = async () => {
+    setSubmitting(true)
+    setError("")
+    
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess("Conta marcada para exclusão em 60 dias. Você pode cancelar a qualquer momento.")
+        setShowDeleteDialog(false)
+        fetchUserData() // Atualizar dados
+      } else {
+        setError(data.error || "Erro ao marcar conta para exclusão")
+      }
+    } catch (error) {
+      setError("Erro de conexão")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleCancelDeletion = async () => {
+    setSubmitting(true)
+    setError("")
+    
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/account/delete", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess("Exclusão de conta cancelada com sucesso!")
+        fetchUserData() // Atualizar dados
+      } else {
+        setError(data.error || "Erro ao cancelar exclusão")
+      }
+    } catch (error) {
+      setError("Erro de conexão")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeactivateAccount = async (action: "deactivate" | "reactivate") => {
+    setSubmitting(true)
+    setError("")
+    
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/account/delete", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess(action === "deactivate" ? "Conta desativada com sucesso!" : "Conta reativada com sucesso!")
+        setShowDeactivateDialog(false)
+        fetchUserData() // Atualizar dados
+      } else {
+        setError(data.error || `Erro ao ${action === "deactivate" ? "desativar" : "reativar"} conta`)
+      }
+    } catch (error) {
+      setError("Erro de conexão")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -189,6 +297,10 @@ export default function SettingsPage() {
             <TabsTrigger value="support" className="gap-2">
               <HelpCircle className="h-4 w-4" />
               Suporte
+            </TabsTrigger>
+            <TabsTrigger value="account" className="gap-2">
+              <UserX className="h-4 w-4" />
+              Gerenciar Conta
             </TabsTrigger>
           </TabsList>
 
@@ -392,6 +504,167 @@ export default function SettingsPage() {
                     </form>
                   </DialogContent>
                 </Dialog>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="account">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserX className="h-5 w-5" />
+                  Gerenciar Conta
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Status da conta */}
+                {accountStatus.markedForDeletion && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Conta marcada para exclusão!</strong><br />
+                      Sua conta será permanentemente deletada em {accountStatus.daysRemaining} dias 
+                      ({new Date(accountStatus.deletionDate!).toLocaleDateString('pt-BR')}).
+                      <br />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleCancelDeletion}
+                        disabled={submitting}
+                        className="mt-2"
+                      >
+                        {submitting ? "Cancelando..." : "Cancelar Exclusão"}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {accountStatus.isDeactivated && (
+                  <Alert>
+                    <UserX className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Conta desativada</strong><br />
+                      Sua conta está temporariamente desativada. Ninguém pode ver seu conteúdo.
+                      <br />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleDeactivateAccount("reactivate")}
+                        disabled={submitting}
+                        className="mt-2"
+                      >
+                        {submitting ? "Reativando..." : "Reativar Conta"}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Desativar conta */}
+                <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
+                  <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                    <UserX className="h-5 w-5 text-yellow-600" />
+                    Desativar Conta
+                  </h3>
+                  <p className="text-gray-700 mb-4">
+                    Desative temporariamente sua conta. Ninguém poderá ver seu perfil ou conteúdo, 
+                    mas você pode reativar a qualquer momento.
+                  </p>
+                  <ul className="text-sm text-gray-600 space-y-1 mb-4">
+                    <li>• Seu perfil ficará invisível</li>
+                    <li>• Posts e comentários ficam ocultos</li>
+                    <li>• Você pode reativar a qualquer momento</li>
+                    <li>• Seus dados não são perdidos</li>
+                  </ul>
+                  {!accountStatus.isDeactivated && (
+                    <Dialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" className="text-yellow-600 border-yellow-300 hover:bg-yellow-50">
+                          <UserX className="h-4 w-4 mr-2" />
+                          Desativar Conta
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Desativar Conta</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <p className="text-gray-600">
+                            Tem certeza de que deseja desativar sua conta? Você pode reativar a qualquer momento.
+                          </p>
+                          <div className="flex gap-3 justify-end">
+                            <Button variant="outline" onClick={() => setShowDeactivateDialog(false)}>
+                              Cancelar
+                            </Button>
+                            <Button 
+                              variant="destructive" 
+                              onClick={() => handleDeactivateAccount("deactivate")}
+                              disabled={submitting}
+                            >
+                              {submitting ? "Desativando..." : "Desativar"}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
+
+                {/* Excluir conta */}
+                <div className="bg-red-50 p-6 rounded-lg border border-red-200">
+                  <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                    <Trash2 className="h-5 w-5 text-red-600" />
+                    Excluir Conta Permanentemente
+                  </h3>
+                  <p className="text-gray-700 mb-4">
+                    <strong>⚠️ ATENÇÃO:</strong> Esta ação marca sua conta para exclusão permanente em 60 dias. 
+                    Todos os seus dados serão deletados definitivamente.
+                  </p>
+                  <ul className="text-sm text-gray-600 space-y-1 mb-4">
+                    <li>• Período de reflexão de 60 dias</li>
+                    <li>• Todos os posts, mensagens e dados serão perdidos</li>
+                    <li>• Você pode cancelar durante os 60 dias</li>
+                    <li>• Após 60 dias, a exclusão é irreversível</li>
+                  </ul>
+                  {!accountStatus.markedForDeletion && (
+                    <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="destructive">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir Conta
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle className="text-red-600">⚠️ Excluir Conta Permanentemente</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="bg-red-50 p-4 rounded border border-red-200">
+                            <p className="text-red-800 font-medium mb-2">Esta ação não pode ser desfeita!</p>
+                            <p className="text-red-700 text-sm">
+                              Sua conta será marcada para exclusão e deletada permanentemente em 60 dias. 
+                              Todos os seus dados (posts, mensagens, fotos) serão perdidos para sempre.
+                            </p>
+                          </div>
+                          <p className="text-gray-600">
+                            Você tem certeza de que deseja continuar? Você pode cancelar durante os próximos 60 dias.
+                          </p>
+                          <div className="flex gap-3 justify-end">
+                            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                              Cancelar
+                            </Button>
+                            <Button 
+                              variant="destructive" 
+                              onClick={handleDeleteAccount}
+                              disabled={submitting}
+                            >
+                              {submitting ? "Processando..." : "Sim, Excluir Minha Conta"}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

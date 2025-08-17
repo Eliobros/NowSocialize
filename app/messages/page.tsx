@@ -25,6 +25,10 @@ import {
   ImageIcon,
   Smile,
   X,
+  User,
+  UserX,
+  Flag,
+  Settings,
 } from "lucide-react"
 import { CallManager } from "@/components/call/call-manager"
 import { AudioRecorder } from "@/components/audio-recorder"
@@ -104,7 +108,13 @@ export default function MessagesPage() {
   const { isEncryptionEnabled, hasKeys, generateKeys, setupConversation } = useEncryption()
   const [pendingCallType, setPendingCallType] = useState<"audio" | "video" | null>(null)
   const [pendingCallUser, setPendingCallUser] = useState<{ id: string; name: string } | null>(null)
+  const [showCallConfirm, setShowCallConfirm] = useState(false)
   const [showAudioRecorder, setShowAudioRecorder] = useState(false)
+  const [showMessageSettings, setShowMessageSettings] = useState(false)
+  const [messageSettings, setMessageSettings] = useState({
+    nickname: "",
+    isBlocked: false
+  })
 
   useEffect(() => {
     const token = localStorage.getItem("token")
@@ -429,6 +439,52 @@ export default function MessagesPage() {
     setPendingCallUser(null)
   }
 
+  const handleMessageSettings = () => {
+    const conversation = conversations.find((c) => c._id === selectedConversation)
+    const otherParticipant = conversation ? getOtherParticipant(conversation) : null
+    
+    if (otherParticipant) {
+      setMessageSettings({
+        nickname: otherParticipant.nickname || otherParticipant.name,
+        isBlocked: false // Implementar lógica de bloqueio depois
+      })
+      setShowMessageSettings(true)
+    }
+  }
+
+  const handleUpdateNickname = async () => {
+    // Implementar API para atualizar apelido
+    try {
+      // Placeholder - implementar depois
+      console.log("Atualizando apelido para:", messageSettings.nickname)
+      setShowMessageSettings(false)
+    } catch (error) {
+      console.error("Erro ao atualizar apelido:", error)
+    }
+  }
+
+  const handleBlockUser = async () => {
+    // Implementar API para bloquear usuário
+    try {
+      // Placeholder - implementar depois
+      console.log("Bloqueando usuário")
+      setShowMessageSettings(false)
+    } catch (error) {
+      console.error("Erro ao bloquear usuário:", error)
+    }
+  }
+
+  const handleReportUser = async () => {
+    // Implementar API para denunciar usuário
+    try {
+      // Placeholder - implementar depois
+      console.log("Denunciando usuário")
+      setShowMessageSettings(false)
+    } catch (error) {
+      console.error("Erro ao denunciar usuário:", error)
+    }
+  }
+
   // Audio recording functions
   const handleAudioSent = async (audioUrl: string) => {
     if (!selectedConversation) return
@@ -700,7 +756,7 @@ export default function MessagesPage() {
                       )}
                       <Phone className="h-6 w-6 text-gray-600 cursor-pointer" onClick={() => startCall("audio")} />
                       <Video className="h-6 w-6 text-gray-600 cursor-pointer" onClick={() => startCall("video")} />
-                      <Info className="h-6 w-6 text-gray-600" />
+                      <Info className="h-6 w-6 text-gray-600 cursor-pointer" onClick={handleMessageSettings} />
                     </div>
                   </div>
                 )
@@ -1172,6 +1228,80 @@ export default function MessagesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Message Settings Dialog */}
+      <Dialog open={showMessageSettings} onOpenChange={setShowMessageSettings}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Configurações da Conversa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Alterar apelido */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Apelido</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={messageSettings.nickname}
+                  onChange={(e) => setMessageSettings({ ...messageSettings, nickname: e.target.value })}
+                  className="flex-1 px-3 py-2 border rounded-md"
+                  placeholder="Digite um apelido"
+                />
+                <Button size="sm" onClick={handleUpdateNickname}>
+                  Salvar
+                </Button>
+              </div>
+            </div>
+
+            {/* Opções de ação */}
+            <div className="space-y-2">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-2"
+                onClick={() => {
+                  const conversation = conversations.find((c) => c._id === selectedConversation)
+                  const otherParticipant = conversation ? getOtherParticipant(conversation) : null
+                  if (otherParticipant) {
+                    router.push(`/profile/${otherParticipant._id}`)
+                  }
+                }}
+              >
+                <User className="h-4 w-4" />
+                Ver Perfil
+              </Button>
+
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-2 text-yellow-600 hover:text-yellow-700"
+                onClick={handleBlockUser}
+              >
+                <UserX className="h-4 w-4" />
+                Bloquear Usuário
+              </Button>
+
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-2 text-red-600 hover:text-red-700"
+                onClick={handleReportUser}
+              >
+                <Flag className="h-4 w-4" />
+                Denunciar Usuário
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Call Manager */}
+      {currentUserId && user && (
+        <CallManager 
+          currentUserId={currentUserId} 
+          currentUserName={user.name} 
+        />
+      )}
     </div>
   )
 }

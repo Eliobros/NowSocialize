@@ -31,6 +31,7 @@ export default function PostPageClient({ params }: { params: { postId: string } 
   const [post, setPost] = useState<Post | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -40,7 +41,25 @@ export default function PostPageClient({ params }: { params: { postId: string } 
       return
     }
     fetchPost()
+    fetchCurrentUser()
   }, [params.postId, router])
+
+  const fetchCurrentUser = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const userData = await response.json()
+        setCurrentUserId(userData._id)
+      }
+    } catch (error) {
+      console.error("Erro ao buscar usuário atual:", error)
+    }
+  }
 
   const fetchPost = async () => {
     try {
@@ -60,9 +79,9 @@ export default function PostPageClient({ params }: { params: { postId: string } 
       } else if (response.status === 404) {
         setError("Post não encontrado")
       } else {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({ error: `Erro HTTP ${response.status}` }))
         console.error("Erro na resposta da API:", response.status, errorData)
-        setError(errorData.error || "Erro ao carregar post")
+        setError(errorData.error || `Erro ao carregar post (${response.status})`)
       }
     } catch (error) {
       console.error("Erro ao buscar post:", error)
@@ -70,6 +89,11 @@ export default function PostPageClient({ params }: { params: { postId: string } 
     } finally {
       setLoading(false)
     }
+  }
+
+  const handlePostDeleted = () => {
+    // Redirecionar para o feed quando o post for deletado
+    router.push('/feed')
   }
 
   if (loading) {
@@ -126,7 +150,11 @@ export default function PostPageClient({ params }: { params: { postId: string } 
 
         {/* Post Principal */}
         <div className="mb-8">
-          <PostCard post={post} />
+          <PostCard 
+            post={post} 
+            currentUserId={currentUserId || undefined}
+            onPostDeleted={handlePostDeleted}
+          />
         </div>
 
         {/* Seção de posts relacionados ou sugestões */}
