@@ -45,29 +45,28 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
 
   // Controlar reprodução baseado no isActive
   useEffect(() => {
-    const video = videoRef.current
-    
-    if (video) {
-      if (isActive) {
-        setIsPlaying(true)
-        video.play().catch(console.error)
-      } else {
-        // Cleanup mais completo
-        video.pause()
-        video.currentTime = 0 // Reset posição
-        setIsPlaying(false)
-      }
-    }
+  const video = videoRef.current
+  if (!video) return
 
-    // Cleanup quando componente desmonta
-    return () => {
-      if (video) {
-        video.pause()
-        video.currentTime = 0
-      }
-    }
-  }, [isActive])
+  if (isActive && isPlaying) {
+    video.play().catch(console.error)
+  } else {
+    video.pause()
+  }
 
+  // Cleanup quando não é mais ativo
+  if (!isActive) {
+    video.pause()
+    video.currentTime = 0
+    setIsPlaying(false)
+  }
+
+  return () => {
+    video.pause()
+    video.currentTime = 0
+  }
+}, [isActive, isPlaying])
+       
   // Controlar play/pause manual
   useEffect(() => {
     if (videoRef.current && isActive) {
@@ -89,15 +88,9 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   }
 
   const togglePlayPause = () => {
-    if (videoRef.current && isActive) {
-      if (isPlaying) {
-        videoRef.current.pause()
-      } else {
-        videoRef.current.play()
-      }
-      setIsPlaying(!isPlaying)
-    }
-  }
+  if (!isActive) return // Só permite controle se estiver ativo
+  setIsPlaying(!isPlaying) // Só muda o estado, o useEffect cuida do resto
+}
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)

@@ -1,6 +1,4 @@
-import { verificationCodes } from "../send-verification-code/route"
 import clientPromise from '@/lib/mongodb'
-import { ObjectId } from 'mongodb'
 
 export const maxDuration = 30
 
@@ -11,45 +9,65 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "Email e código são obrigatórios." }), { status: 400 })
   }
 
-  const storedCodeData = verificationCodes.get(email)
-
-  if (!storedCodeData) {
-    return new Response(JSON.stringify({ error: "Nenhum código de verificação encontrado para este e-mail." }), {
-      status: 400,
-    })
-  }
-
-  if (storedCodeData.code !== code) {
-    return new Response(JSON.stringify({ error: "Código de verificação inválido." }), { status: 400 })
-  }
-
-  if (Date.now() > storedCodeData.expiresAt) {
-    verificationCodes.delete(email) // Remove o código expirado
-    return new Response(JSON.stringify({ error: "Código de verificação expirado. Solicite um novo." }), { status: 400 })
-  }
-
-  // Código verificado com sucesso, remova-o para evitar reuso
-  verificationCodes.delete(email)
-
   try {
     const client = await clientPromise
     const db = client.db('socializenow')
 
-    // Atualiza o usuário marcando userEmailVerified como true pelo email
-    const result = await db.collection('users').updateOne(
-      { email: email },
+    // 1. Buscar código no MongoDB
+    const storedCodeData = await db.collection('verification_codes').findOne({
+      email: email.toLowerCase().trim()
+    })
+
+    console.log('Buscando código para:', email.toLowerCase().trim())
+    console.log('Resultado:', storedCodeData)
+
+    if (!storedCodeData) {
+      return new Response(
+        JSON.stringify({ error: "Nenhum código de verificação encontrado para este e-mail." }),
+        { status: 400 }
+      )
+    }
+
+    // 2. Verificar expiração
+    if (new Date() > new Date(storedCodeData.expiresAt)) {
+      await db.collection('verification_codes').deleteOne({ _id: storedCodeData._id })
+      return new Response(
+        JSON.stringify({ error: "Código expirado. Solicite um novo." }),
+        { status: 400 }
+      )
+    }
+
+    // 3. Verificar se código confere
+    if (storedCodeData.code !== code.trim()) {
+      return new Response(
+        JSON.stringify({ error: "Código de verificação inválido." }),
+        { status: 400 }
+      )
+    }
+
+    // 4. Código correto! Atualizar usuário
+    const updateResult = await db.collection('users').updateOne(
+      { email: email.toLowerCase().trim() },
       { $set: { userEmailVerified: true } }
     )
 
-    if (result.modifiedCount === 0) {
-      return new Response(JSON.stringify({ error: "Usuário não encontrado para o e-mail fornecido." }), {
-        status: 404,
-      })
+    if (updateResult.modifiedCount === 0) {
+      return new Response(
+        JSON.stringify({ error: "Usuário não encontrado." }),
+        { status: 404 }
+      )
     }
 
-    return new Response(JSON.stringify({ message: "Código verificado e e-mail confirmado com sucesso!" }), { status: 200 })
+    // 5. Deletar o código usado
+    await db.collection('verification_codes').deleteOne({ _id: storedCodeData._id })
+
+    return new Response(
+      JSON.stringify({ message: "Código verificado e e-mail confirmado com sucesso!" }),
+      { status: 200 }
+    )
+
   } catch (error) {
-    console.error("Erro ao atualizar usuário:", error)
+    console.error("Erro ao verificar código:", error)
     return new Response(JSON.stringify({ error: "Erro interno do servidor." }), { status: 500 })
   }
 }

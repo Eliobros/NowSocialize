@@ -1,11 +1,6 @@
-// Removido: import axios from "axios"
-// Removido: import SibApiV3Sdk from "sib-api-v3-sdk"
+import clientPromise from '@/lib/mongodb'
 
-// Armazenamento temporário em memória para códigos de verificação
-// Em produção, use um banco de dados (Supabase, Neon) ou cache (Upstash Redis)
-const verificationCodes = new Map<string, { code: string; expiresAt: number }>()
-
-export const maxDuration = 30 // Permitir respostas de streaming de até 30 segundos
+export const maxDuration = 30
 
 export async function POST(req: Request) {
   const { email, name } = await req.json()
@@ -14,24 +9,39 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "Email e nome são obrigatórios." }), { status: 400 })
   }
 
-  // VOLTE PARA A VARIÁVEL DE AMBIENTE!
   const brevoApiKey = process.env.BREVO_API_KEY
 
   if (!brevoApiKey) {
     console.error("BREVO_API_KEY não está configurada.")
-    return new Response(JSON.stringify({ error: "Erro de configuração do servidor: Chave da API Brevo ausente." }), {
-      status: 500,
-    })
+    return new Response(JSON.stringify({ error: "Erro de configuração do servidor." }), { status: 500 })
   }
 
-  // 1. Gerar código de verificação
-  const verificationCode = Math.floor(100000 + Math.random() * 900000).toString() // Código de 6 dígitos
-  const expiresAt = Date.now() + 5 * 60 * 1000 // Expira em 5 minutos
+  // 1. Gerar código
+  const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutos
 
-  // Armazenar o código temporariamente
-  verificationCodes.set(email, { code: verificationCode, expiresAt })
+  try {
+    // 2. SALVAR NO MONGODB (não no Map!)
+    const client = await clientPromise
+    const db = client.db('socializenow')
+    
+    // Remove códigos antigos desse email e insere o novo
+    await db.collection('verification_codes').deleteMany({ email: email.toLowerCase().trim() })
+    await db.collection('verification_codes').insertOne({
+      email: email.toLowerCase().trim(),
+      code: verificationCode,
+      expiresAt,
+      createdAt: new Date()
+    })
 
-  // 2. Personalizar o conteúdo do e-mail (mesmo HTML de antes)
+    console.log('Código salvo no MongoDB:', { email, code: verificationCode })
+
+  } catch (error) {
+    console.error('Erro ao salvar código no MongoDB:', error)
+    return new Response(JSON.stringify({ error: "Erro ao salvar código." }), { status: 500 })
+  }
+
+  // 3. Enviar email (seu código atual de envio...)
   const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
@@ -93,28 +103,16 @@ export async function POST(req: Request) {
 </body>
 </html>`
 
-  // 3. Dados para a requisição fetch
   const requestBody = {
     sender: {
       name: "SocializeNow",
-      email: "eliobrostech@topaziocoin.online", // Precisa ser verificado na Brevo!
+      email: "eliobrostech@topaziocoin.online",
     },
-    to: [
-      {
-        email: email,
-        name: name,
-      },
-    ],
+    to: [{ email, name }],
     subject: "Seu Código de Verificação SocializeNow",
-    htmlContent: htmlContent,
-    textContent: `Olá ${name}! Para concluir seu cadastro na SocializeNow, use o código: ${verificationCode}. Este código expira em 5 minutos. Se você não solicitou este código, ignore este e-mail.`,
+    htmlContent,
+    textContent: `Olá ${name}! Para concluir seu cadastro na SocializeNow, use o código: ${verificationCode}. Este código expira em 5 minutos.`,
   }
-
-  console.log("Tentando enviar e-mail com os seguintes dados (usando fetch):", {
-    sender: requestBody.sender,
-    to: requestBody.to,
-    subject: requestBody.subject,
-  })
 
   try {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -127,27 +125,21 @@ export async function POST(req: Request) {
       body: JSON.stringify(requestBody),
     })
 
-    const responseData = await response.json() // Tenta parsear a resposta como JSON
-
-    console.log("Resposta da Brevo (Status):", response.status)
-    console.log("Resposta da Brevo (Dados):", responseData)
+    const responseData = await response.json()
 
     if (response.ok) {
-      return new Response(JSON.stringify({ message: "Código de verificação enviado com sucesso!" }), { status: 200 })
+      return new Response(JSON.stringify({ message: "Código enviado com sucesso!" }), { status: 200 })
     } else {
-      // Se a resposta não for OK, logamos o erro da Brevo
       console.error("Erro da Brevo:", responseData)
-      return new Response(JSON.stringify({ error: responseData.message || "Erro ao enviar código de verificação." }), {
+      return new Response(JSON.stringify({ error: responseData.message || "Erro ao enviar código." }), {
         status: response.status,
       })
     }
   } catch (error: any) {
-    console.error("Erro de conexão ao enviar e-mail de verificação:", error.message, error)
-    return new Response(JSON.stringify({ error: "Erro de conexão. Tente novamente." }), {
-      status: 500,
-    })
+    console.error("Erro ao enviar e-mail:", error)
+    return new Response(JSON.stringify({ error: "Erro de conexão." }), { status: 500 })
   }
 }
 
-// Exportar para que o mapa possa ser acessado pela rota de verificação
-export { verificationCodes }
+// REMOVER ESSA LINHA:
+// export { verificationCodes }
