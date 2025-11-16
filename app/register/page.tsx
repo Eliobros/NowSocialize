@@ -18,6 +18,7 @@ export default function RegisterPage() {
     username: "",
     password: "",
     confirmPassword: "",
+    verificationToken: "", // ✅ ADICIONADO
   })
   const [verificationCode, setVerificationCode] = useState("")
   const [loading, setLoading] = useState(false)
@@ -79,6 +80,8 @@ export default function RegisterPage() {
       const data = await response.json()
       if (response.ok) {
         setIsCodeVerified(true)
+        // ✅ GUARDA O TOKEN DE VERIFICAÇÃO
+        setFormData({ ...formData, verificationToken: data.verificationToken })
         setSuccessMessage(data.message + " Agora você pode criar sua conta.")
       } else {
         setError(data.error || "Erro ao verificar código.")
@@ -121,6 +124,7 @@ export default function RegisterPage() {
           email: formData.email,
           username: formData.username,
           password: formData.password,
+          verificationToken: formData.verificationToken, // ✅ ENVIA O TOKEN
         }),
       })
       const data = await response.json()
@@ -168,7 +172,7 @@ export default function RegisterPage() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
-                disabled={verificationCodeSent} // Desabilita após enviar o código
+                disabled={verificationCodeSent}
               />
             </div>
             <div className="space-y-2">
@@ -181,7 +185,7 @@ export default function RegisterPage() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
-                  disabled={verificationCodeSent} // Desabilita após enviar o código
+                  disabled={verificationCodeSent}
                 />
                 <Button
                   type="button"

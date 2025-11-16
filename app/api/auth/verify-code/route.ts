@@ -45,24 +45,25 @@ export async function POST(req: Request) {
       )
     }
 
-    // 4. Código correto! Atualizar usuário
-    const updateResult = await db.collection('users').updateOne(
-      { email: email.toLowerCase().trim() },
-      { $set: { userEmailVerified: true } }
-    )
+    // 4. Código correto! Gera token de verificação
+    const verificationToken = Buffer.from(`${email}:${Date.now()}`).toString('base64')
+    
+    // Salva o token temporariamente (30 minutos)
+    await db.collection('verification_tokens').insertOne({
+      email: email.toLowerCase().trim(),
+      token: verificationToken,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutos
+      createdAt: new Date()
+    })
 
-    if (updateResult.modifiedCount === 0) {
-      return new Response(
-        JSON.stringify({ error: "Usuário não encontrado." }),
-        { status: 404 }
-      )
-    }
-
-    // 5. Deletar o código usado
+    // 5. Deletar o código usado (evita reuso)
     await db.collection('verification_codes').deleteOne({ _id: storedCodeData._id })
 
     return new Response(
-      JSON.stringify({ message: "Código verificado e e-mail confirmado com sucesso!" }),
+      JSON.stringify({ 
+        message: "Código verificado com sucesso!",
+        verificationToken // Frontend vai usar isso pra criar a conta
+      }),
       { status: 200 }
     )
 
