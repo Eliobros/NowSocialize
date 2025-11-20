@@ -1,5 +1,7 @@
 "use client"
 
+// No topo do arquivo, adiciona import
+import { io, Socket } from 'socket.io-client'
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -83,6 +85,7 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [newMessage, setNewMessage] = useState("")
+  const socketRef = useRef<Socket | null>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -114,40 +117,103 @@ export default function MessagesPage() {
     isBlocked: false
   })
 
+  
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (!token) {
-      router.push("/login")
-      return
+  const token = localStorage.getItem("token")
+  if (!token) {
+    router.push("/login")
+    return
+  }
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    setCurrentUserId(payload.userId)
+    
+    // 🔥 Socket.io Connection
+    if (!socketRef.current) {
+      socketRef.current = io()
+      
+      socketRef.current.on('connect', () => {
+        console.log('✅ Socket conectado!')
+        
+        // Entra na sala do próprio usuário e marca como online
+        socketRef.current?.emit('join', payload.userId)
+      })
+
+      // Ouvir novas mensagens
+      socketRef.current.on('new_message', (newMessage) => {
+        console.log('📨 Nova mensagem:', newMessage)
+        
+        // Atualiza mensagens se for da conversa atual
+        if (newMessage.conversationId === selectedConversation) {
+          setMessages(prev => [...prev, newMessage])
+        }
+        
+        // Atualiza lista de conversas
+        fetchConversations()
+      })
+      
+      // Ouvir mudanças de status de usuários
+      socketRef.current.on('user-status-changed', ({ userId, isOnline, lastSeen }) => {
+        console.log(`👤 Status changed: ${userId} - ${isOnline ? 'Online' : 'Offline'}`)
+        
+        // Atualiza lista de conversas pra refletir o novo status
+        setConversations(prev => 
+          prev.map(conv => ({
+            ...conv,
+            participants: conv.participants.map(p => 
+              p._id === userId 
+                ? { ...p, isOnline, lastSeen }
+                : p
+            )
+          }))
+        )
+      })
     }
+    
+  } catch (error) {
+    console.error("Error decoding token:", error)
+  }
 
-    // Decode JWT to get user ID
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]))
-      setCurrentUserId(payload.userId)
-    } catch (error) {
-      console.error("Error decoding token:", error)
+  fetchConversations()
+
+  const conversationId = searchParams.get("conversation")
+  if (conversationId) {
+    setSelectedConversation(conversationId)
+    fetchMessages(conversationId)
+  }
+
+  // Keep-alive: manda sinal a cada 30 segundos pra manter status online
+  const keepAliveInterval = setInterval(() => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('user-activity')
     }
+  }, 30000) // 30 segundos
 
-    fetchConversations()
-
-    // Check if there's a conversation ID in the URL
-    const conversationId = searchParams.get("conversation")
-    if (conversationId) {
-      setSelectedConversation(conversationId)
-      fetchMessages(conversationId)
+  // Cleanup
+  return () => {
+    clearInterval(keepAliveInterval)
+    if (socketRef.current) {
+      socketRef.current.disconnect()
+      socketRef.current = null
     }
+  }
+}, [router, searchParams])
 
-    // Simular mensagens em tempo real
-    const interval = setInterval(() => {
-      fetchConversations()
-      if (selectedConversation) {
-        fetchMessages(selectedConversation)
+
+  // Novo useEffect separado pra entrar/sair de conversas
+useEffect(() => {
+  if (socketRef.current && selectedConversation) {
+    socketRef.current.emit('join_conversation', selectedConversation)
+    console.log('🚪 Entrou na conversa:', selectedConversation)
+    
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.emit('leave_conversation', selectedConversation)
       }
-    }, 5000) // Atualiza a cada 5 segundos
-
-    return () => clearInterval(interval)
-  }, [router, selectedConversation, searchParams])
+    }
+  }
+}, [selectedConversation])
 
   useEffect(() => {
     if (shouldAutoScroll && !isUserScrolling && messages.length > 0) {

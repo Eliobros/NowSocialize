@@ -1,111 +1,144 @@
-// app/post/[postId]/page.tsx
-import { Metadata } from 'next'
-import PostPageClient from './PostPageClient'
-import clientPromise from "@/lib/mongodb"
-import { ObjectId } from "mongodb"
+"use client"
 
-// Função para buscar dados do post (server-side)
-async function getPost(postId: string) {
-  try {
-    const client = await clientPromise
-    const db = client.db("socializenow")
-    const posts = db.collection("posts")
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { Navbar } from "@/components/navbar"
+import { PostCard } from "@/components/post-card"
+import { Card, CardContent } from "@/components/ui/card"
+import { Loader2, ArrowLeft } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
-    const post = await posts.aggregate([
-      {
-        $match: { _id: new ObjectId(postId) }
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "authorId",
-          foreignField: "_id",
-          as: "author",
-        },
-      },
-      {
-        $unwind: "$author",
-      },
-      {
-        $project: {
-          content: 1,
-          image: 1,
-          createdAt: 1,
-          likes: 1,
-          "author._id": 1,
-          "author.name": 1,
-          "author.username": 1,
-          "author.avatar": 1,
-          "author.isVerified": 1,
-        },
-      },
-    ]).toArray()
-
-    return post[0] || null
-  } catch (error) {
-    console.error('Erro ao buscar post:', error)
-    return null
+interface Post {
+  _id: string
+  content: string
+  image?: string
+  author: {
+    name: string
+    email: string
+    _id: string
+    avatar?: string
+    isVerified?: boolean
   }
+  createdAt: string
+  likes: number
+  likedByUser: boolean
+  commentsCount: number
 }
 
-// Gerar metadata dinamicamente
-export async function generateMetadata({ params }: { params: { postId: string } }): Promise<Metadata> {
-  const post = await getPost(params.postId)
+export default function PostPage() {
+  const params = useParams()
+  const router = useRouter()
+  const postId = params.postId as string
+  
+  const [post, setPost] = useState<Post | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [currentUserId, setCurrentUserId] = useState<string>("")
 
-  if (!post) {
-    return {
-      title: 'Post não encontrado - SocializeNow',
-      description: 'Este post não foi encontrado na SocializeNow',
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      router.push("/login")
+      return
+    }
+
+    // Decodificar token para pegar o userId
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      setCurrentUserId(payload.userId || payload.id || payload._id)
+    } catch (e) {
+      console.error("Erro ao decodificar token:", e)
+    }
+
+    fetchPost()
+  }, [postId, router])
+
+  const fetchPost = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/posts/${postId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setPost(data.post)
+      } else if (response.status === 404) {
+        setError("Post não encontrado")
+      } else {
+        setError("Erro ao carregar post")
+      }
+    } catch (error) {
+      console.error("Erro ao buscar post:", error)
+      setError("Erro de conexão")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const postUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://socializenow.vercel.app'}/post/${post._id}`
-  const authorName = post.author.name
-  const postContent = post.content || 'Veja este post no SocializeNow'
-  const description = postContent.length > 160 ? postContent.substring(0, 157) + '...' : postContent
-
-  // Escolhe a melhor imagem para preview
-  const imageUrl = post.image || post.author.avatar || `${process.env.NEXT_PUBLIC_SITE_URL || 'https://socializenow.vercel.app'}/default-post.png`
-
-  const title = `${authorName} ${post.author.isVerified ? '✓' : ''} no SocializeNow`
-
-  return {
-    title: title,
-    description: description,
-    openGraph: {
-      title: title,
-      description: description,
-      url: postUrl,
-      siteName: 'SocializeNow',
-      images: [
-        {
-          url: imageUrl,
-          width: post.image ? 1200 : 400, // Se tem imagem do post, usa maior
-          height: post.image ? 630 : 400,  // Proporção ideal para redes sociais
-          alt: post.image ? 'Imagem do post' : `Foto de perfil de ${authorName}`,
-        }
-      ],
-      type: 'article',
-      // Meta tags específicas para artigo
-      publishedTime: post.createdAt,
-      authors: [authorName],
-    },
-    twitter: {
-      card: post.image ? 'summary_large_image' : 'summary', // Card grande se tem imagem
-      title: title,
-      description: description,
-      images: [imageUrl],
-      creator: `@${post.author.username || post.author.name}`,
-    },
-    // Meta tags adicionais
-    other: {
-      'article:author': authorName,
-      'article:published_time': post.createdAt,
-    },
+  const handlePostDeleted = (deletedPostId: string) => {
+    // Redirecionar para o feed após deletar o post
+    router.push("/feed")
   }
-}
 
-// Componente principal (server component)
-export default function PostPage({ params }: { params: { postId: string } }) {
-  return <PostPageClient params={params} />
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !post) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8 max-w-2xl">
+          <Button 
+            variant="ghost" 
+            onClick={() => router.back()}
+            className="mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar
+          </Button>
+          <Card>
+            <CardContent className="text-center py-12">
+              <p className="text-red-500 mb-4">{error || "Post não encontrado"}</p>
+              <Button onClick={() => router.push("/feed")}>
+                Voltar ao Feed
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
+        <Button 
+          variant="ghost" 
+          onClick={() => router.back()}
+          className="mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Voltar
+        </Button>
+        
+        <PostCard 
+          post={post} 
+          currentUserId={currentUserId}
+          onPostDeleted={handlePostDeleted}
+        />
+      </div>
+    </div>
+  )
 }

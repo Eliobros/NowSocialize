@@ -11,23 +11,38 @@ async function getUserProfile(userId: string) {
     const db = client.db("socializenow")
     const users = db.collection("users")
 
-    const user = await users.findOne(
-      { _id: new ObjectId(userId) },
+    // Usar aggregation para calcular o tamanho dos arrays corretamente
+    const result = await users.aggregate([
       {
-        projection: {
+        $match: { _id: new ObjectId(userId) }
+      },
+      {
+        $project: {
           name: 1,
           username: 1,
           bio: 1,
           avatar: 1,
           isVerified: 1,
-          followers: { $size: "$followers" },
-          following: { $size: "$following" },
+          followers: { 
+            $cond: {
+              if: { $isArray: "$followers" },
+              then: { $size: "$followers" },
+              else: 0
+            }
+          },
+          following: { 
+            $cond: {
+              if: { $isArray: "$following" },
+              then: { $size: "$following" },
+              else: 0
+            }
+          },
           postsCount: 1
         }
       }
-    )
+    ]).toArray()
 
-    return user
+    return result[0] || null
   } catch (error) {
     console.error('Erro ao buscar usuário:', error)
     return null

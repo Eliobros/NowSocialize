@@ -100,6 +100,8 @@ export default function NotificationsPage() {
   }
 
   const handleNotificationClick = async (notification: Notification) => {
+    console.log('Notificação clicada:', notification) // Debug
+    
     // Marcar como lida se não estiver
     if (!notification.read) {
       await markAsRead(notification._id)
@@ -108,13 +110,22 @@ export default function NotificationsPage() {
     // Navegar baseado no tipo de notificação
     switch (notification.type) {
       case "follow":
-        router.push(`/profile/${notification.from._id}`)
+        console.log('Navegando para perfil:', notification.from._id) // Debug
+        if (notification.from && notification.from._id) {
+          router.push(`/profile/${notification.from._id}`)
+        } else {
+          console.error('ID do usuário não encontrado na notificação')
+          setError('Não foi possível encontrar o perfil do usuário')
+        }
         break
       case "like":
       case "comment":
+        console.log('Navegando para post:', notification.postId) // Debug
         if (notification.postId) {
-          // Por enquanto, vamos para o feed já que não temos página individual de post
-          router.push(`/feed`)
+          router.push(`/post/${notification.postId}`)
+        } else {
+          console.error('ID do post não encontrado na notificação')
+          setError('Não foi possível encontrar o post')
         }
         break
       case "mention":

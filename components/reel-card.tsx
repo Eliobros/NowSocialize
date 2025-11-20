@@ -30,7 +30,7 @@ interface Reel {
 interface ReelCardProps {
   reel: Reel
   onReelViewed: (reelId: string) => void
-  isActive?: boolean // Para controlar se este reel está ativo
+  isActive?: boolean
 }
 
 export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps) {
@@ -45,28 +45,28 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
 
   // Controlar reprodução baseado no isActive
   useEffect(() => {
-  const video = videoRef.current
-  if (!video) return
+    const video = videoRef.current
+    if (!video) return
 
-  if (isActive && isPlaying) {
-    video.play().catch(console.error)
-  } else {
-    video.pause()
-  }
+    if (isActive && isPlaying) {
+      video.play().catch(console.error)
+    } else {
+      video.pause()
+    }
 
-  // Cleanup quando não é mais ativo
-  if (!isActive) {
-    video.pause()
-    video.currentTime = 0
-    setIsPlaying(false)
-  }
+    // Cleanup quando não é mais ativo
+    if (!isActive) {
+      video.pause()
+      video.currentTime = 0
+      setIsPlaying(false)
+    }
 
-  return () => {
-    video.pause()
-    video.currentTime = 0
-  }
-}, [isActive, isPlaying])
-       
+    return () => {
+      video.pause()
+      video.currentTime = 0
+    }
+  }, [isActive, isPlaying])
+
   // Controlar play/pause manual
   useEffect(() => {
     if (videoRef.current && isActive) {
@@ -88,9 +88,9 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   }
 
   const togglePlayPause = () => {
-  if (!isActive) return // Só permite controle se estiver ativo
-  setIsPlaying(!isPlaying) // Só muda o estado, o useEffect cuida do resto
-}
+    if (!isActive) return
+    setIsPlaying(!isPlaying)
+  }
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -171,8 +171,8 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   }
 
   return (
-    <Card className="w-full h-full flex flex-col bg-black text-white rounded-none border-none">
-      <CardContent className="flex-1 p-0 relative">
+    <Card className="w-full h-full flex flex-col bg-black text-white rounded-none border-none overflow-hidden">
+      <CardContent className="flex-1 p-0 relative w-full h-full">
         <video
           ref={videoRef}
           src={reel.videoUrl}
@@ -180,7 +180,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
           loop
           muted={isMuted}
           playsInline
-          preload="none"
+          preload="metadata"
           onClick={togglePlayPause}
           onPlay={() => {
             setIsPlaying(true)
@@ -200,8 +200,10 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
         >
           {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
         </Button>
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
-          <div className="flex items-center gap-3 mb-2">
+
+        {/* Informações do Autor e Conteúdo */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 pb-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none">
+          <div className="flex items-center gap-3 mb-2 pointer-events-auto">
             <Avatar 
               className="h-10 w-10 cursor-pointer hover:ring-2 hover:ring-white/50 transition-all"
               onClick={() => setShowProfileModal(true)}
@@ -222,37 +224,42 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
               <p className="text-sm text-gray-300">@{reel.author.username}</p>
             </div>
           </div>
-          {reel.content && <p className="text-sm mb-4 whitespace-pre-wrap break-words">{reel.content}</p>}
+          {reel.content && (
+            <p className="text-sm whitespace-pre-wrap break-words max-w-[80%]">
+              {reel.content}
+            </p>
+          )}
         </div>
 
-        <div className="absolute right-4 bottom-40 flex flex-col gap-4">
+        {/* Botões de Interação Lateral */}
+        <div className="absolute right-4 bottom-32 flex flex-col gap-6">
           <Button
             variant="ghost"
             size="icon"
-            className={`flex flex-col items-center justify-center gap-1 text-white ${liked ? "text-red-500" : "hover:text-red-500"}`}
+            className={`flex flex-col items-center justify-center gap-1 text-white ${liked ? "text-red-500" : "hover:text-red-500"} bg-black/30 hover:bg-black/50 rounded-full h-12 w-12`}
             onClick={handleLike}
             disabled={isLiking}
           >
-            <Heart className={`h-6 w-6 ${liked ? "fill-current" : ""}`} />
-            <span className="text-xs">{likeCount}</span>
+            <Heart className={`h-7 w-7 ${liked ? "fill-current" : ""}`} />
+            <span className="text-xs font-semibold">{likeCount}</span>
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="flex flex-col items-center justify-center gap-1 text-white hover:text-blue-300"
+            className="flex flex-col items-center justify-center gap-1 text-white hover:text-blue-300 bg-black/30 hover:bg-black/50 rounded-full h-12 w-12"
             onClick={() => setShowCommentsModal(true)}
           >
-            <MessageCircle className="h-6 w-6" />
-            <span className="text-xs">{reel.commentsCount}</span>
+            <MessageCircle className="h-7 w-7" />
+            <span className="text-xs font-semibold">{reel.commentsCount}</span>
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="flex flex-col items-center justify-center gap-1 text-white hover:text-green-300"
+            className="flex flex-col items-center justify-center gap-1 text-white hover:text-green-300 bg-black/30 hover:bg-black/50 rounded-full h-12 w-12"
             onClick={() => handleShare("copy")}
           >
-            <Share className="h-6 w-6" />
-            <span className="text-xs">Partilhar</span>
+            <Share className="h-7 w-7" />
+            <span className="text-xs font-semibold">Share</span>
           </Button>
         </div>
       </CardContent>

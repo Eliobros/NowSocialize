@@ -76,14 +76,13 @@ export default function ReelsPage() {
 
     const container = containerRef.current
     const scrollY = container.scrollTop
-    const itemHeight = container.clientHeight // Altura de um reel
+    const itemHeight = container.clientHeight
 
-    // Calcula o índice do reel visível
     const newIndex = Math.round(scrollY / itemHeight)
-    if (newIndex !== currentReelIndex) {
+    if (newIndex !== currentReelIndex && newIndex >= 0 && newIndex < reels.length) {
       setCurrentReelIndex(newIndex)
     }
-  }, [currentReelIndex])
+  }, [currentReelIndex, reels.length])
 
   useEffect(() => {
     const container = containerRef.current
@@ -102,7 +101,6 @@ export default function ReelsPage() {
           Authorization: `Bearer ${token}`,
         },
       })
-      // Opcional: Atualizar o estado local para marcar como visualizado sem refetch completo
       setReels((prevReels) => prevReels.map((r) => (r._id === reelId ? { ...r, viewedByUser: true } : r)))
     } catch (error) {
       console.error("Erro ao registrar visualização do reel:", error)
@@ -111,7 +109,7 @@ export default function ReelsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex flex-col">
+      <div className="h-screen bg-black flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-white" />
@@ -122,7 +120,7 @@ export default function ReelsPage() {
 
   if (reels.length === 0) {
     return (
-      <div className="min-h-screen bg-black flex flex-col">
+      <div className="h-screen bg-black flex flex-col">
         <Navbar />
         <div className="flex-1 flex flex-col items-center justify-center text-white p-4 text-center">
           <p className="text-lg mb-4">Nenhum reel encontrado. Seja o primeiro a criar um!</p>
@@ -137,15 +135,29 @@ export default function ReelsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="h-screen bg-black flex flex-col overflow-hidden">
       <Navbar />
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-scroll snap-y snap-mandatory scroll-smooth"
-        style={{ height: "calc(100vh - 64px)" }} // Ajuste para a altura da navbar
+        className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide"
+        style={{ 
+          height: "calc(100vh - 64px)",
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
       >
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
+        
         {reels.map((reel, index) => (
-          <div key={reel._id} className="snap-start w-full h-full flex items-center justify-center">
+          <div 
+            key={reel._id} 
+            className="snap-start snap-always"
+            style={{ height: "calc(100vh - 64px)" }}
+          >
             <ReelCard 
               reel={reel} 
               onReelViewed={handleReelViewed} 
@@ -154,17 +166,19 @@ export default function ReelsPage() {
           </div>
         ))}
       </div>
-      <div className="fixed bottom-20 right-4 z-50">
+      
+      {/* Botão de criar reel flutuante */}
+      <div className="fixed bottom-24 right-6 z-50">
         <Button
           onClick={() => setShowCreateReel(true)}
-          className="rounded-full p-3 shadow-lg bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+          className="rounded-full h-14 w-14 shadow-2xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all hover:scale-110"
           size="icon"
         >
-          <Plus className="h-6 w-6 text-white" />
+          <Plus className="h-7 w-7 text-white" />
         </Button>
       </div>
+      
       <CreateReelDialog open={showCreateReel} onOpenChange={setShowCreateReel} onReelCreated={fetchReels} />
     </div>
   )
 }
-

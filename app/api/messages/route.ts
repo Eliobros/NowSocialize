@@ -129,6 +129,36 @@ export async function POST(request: NextRequest) {
       }
     )
 
+
+    // ✨ ADICIONA ISSO AQUI ✨
+// Emitir via Socket.io
+const io = (global as any).io
+if (io) {
+  io.to(conversationId).emit('new_message', {
+    _id: result.insertedId.toString(),
+    conversationId: conversationId,
+    sender: {
+      _id: user.userId,
+      // Buscar dados do sender se necessário
+    },
+    receiver: receiverId,
+    content: messageData.content,
+    image: messageData.image,
+    createdAt: messageData.createdAt.toISOString(),
+    read: false
+  })
+  console.log(`✅ Mensagem emitida via Socket.io para conversa ${conversationId}`)
+}
+
+return NextResponse.json({
+  message: "Mensagem enviada com sucesso",
+  messageId: result.insertedId,
+  data: {
+    ...messageData,
+    _id: result.insertedId,
+  }
+})
+
     return NextResponse.json({
       message: "Mensagem enviada com sucesso",
       messageId: result.insertedId,

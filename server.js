@@ -143,6 +143,37 @@ app.prepare().then(() => {
       }
     })
 
+     // ✨ ADICIONA AQUI ✨
+// ==================== MENSAGENS EM TEMPO REAL ====================
+
+// Entrar em conversa
+socket.on("join_conversation", (conversationId) => {
+  socket.join(conversationId)
+  console.log(`User ${socket.userId} joined conversation ${conversationId}`)
+})
+
+// Sair de conversa
+socket.on("leave_conversation", (conversationId) => {
+  socket.leave(conversationId)
+  console.log(`User ${socket.userId} left conversation ${conversationId}`)
+})
+
+// Enviar mensagem (opcional - pode usar só via API)
+socket.on("send_message", async (data) => {
+  const { conversationId, content, image } = data
+  
+  // Emite pra todos na conversa
+  io.to(conversationId).emit("new_message", {
+    ...data,
+    createdAt: new Date().toISOString(),
+  })
+  
+  console.log(`Message sent to conversation ${conversationId}`)
+})
+
+// ================================================================
+
+
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id)
       

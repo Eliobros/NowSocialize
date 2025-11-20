@@ -1,128 +1,75 @@
 // app/api/posts/[postId]/route.ts
-import { type NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
-import { ObjectId } from "mongodb";
-import clientPromise from "@/lib/mongodb";
+import { NextRequest, NextResponse } from "next/server"
+import clientPromise from "@/lib/mongodb"
+import { ObjectId } from "mongodb"
+import jwt from "jsonwebtoken"
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-
-function verifyToken(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
-  }
-  const token = authHeader.substring(7);
-  try {
-    return jwt.verify(token, JWT_SECRET) as any;
-  } catch {
-    return null;
-  }
-}
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { postId: string } }
 ) {
   try {
-    const user = verifyToken(request);
-    if (!user) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
+    const authHeader = request.headers.get("authorization")
+    if (!authHeader) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
     }
 
-    const client = await clientPromise;
-    const db = client.db("socializenow");
-    const posts = db.collection("posts");
+    const token = authHeader.replace("Bearer ", "")
+    const decoded = jwt.verify(token, JWT_SECRET) as any
+    const userId = decoded.userId || decoded.id || decoded._id
 
-    const userId = new ObjectId(user.userId);
-    
-    // Validar se o postId é um ObjectId válido
-    if (!ObjectId.isValid(params.postId)) {
-      return NextResponse.json({ error: "ID do post inválido" }, { status: 400 });
-    }
-    
-    const postId = new ObjectId(params.postId);
+    const client = await clientPromise
+    const db = client.db("socializenow")
+    const posts = db.collection("posts")
+    const users = db.collection("users")
 
-    const postResult = await posts
-      .aggregate([
-        { $match: { _id: postId } },
-        {
-          $lookup: {
-            from: "users",
-            localField: "authorId",
-            foreignField: "_id",
-            as: "author",
-          },
-        },
-        { $unwind: "$author" },
-        {
-          $lookup: {
-            from: "likes",
-            let: { postId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ["$postId", "$$postId"] },
-                      { $eq: ["$userId", userId] },
-                    ],
-                  },
-                },
-              },
-            ],
-            as: "userLiked",
-          },
-        },
-        {
-          $lookup: {
-            from: "comments",
-            localField: "_id",
-            foreignField: "postId",
-            as: "comments",
-          },
-        },
-        {
-          $addFields: {
-            likedByUser: { $gt: [{ $size: "$userLiked" }, 0] },
-            commentsCount: { $size: "$comments" },
-          },
-        },
-        {
-          $project: {
-            content: 1,
-            image: 1,
-            createdAt: 1,
-            likes: 1,
-            likedByUser: 1,
-            commentsCount: 1,
-            "author._id": 1,
-            "author.name": 1,
-            "author.email": 1,
-            "author.avatar": 1,
-            "author.isVerified": 1,
-          },
-        },
-      ])
-      .toArray();
+    // Buscar o post
+    const post = await posts.findOne({ _id: new ObjectId(params.postId) })
 
-    if (postResult.length === 0) {
-      return NextResponse.json({ error: "Post não encontrado" }, { status: 404 });
+    if (!post) {
+      return NextResponse.json({ error: "Post não encontrado" }, { status: 404 })
     }
 
-    // Transformar _id em string
-    const post = {
-      ...postResult[0],
-      _id: postResult[0]._id.toString(),
+    // Buscar informações do autor
+    const author = await users.findOne(
+      { _id: new ObjectId(post.userId) },
+      { projection: { name: 1, email: 1, avatar: 1, isVerified: 1 } }
+    )
+
+    if (!author) {
+      return NextResponse.json({ error: "Autor não encontrado" }, { status: 404 })
+    }
+
+    // Verificar se o usuário atual curtiu o post
+    const likedByUser = post.likes?.some((id: ObjectId) => id.toString() === userId)
+
+    // Contar comentários
+    const comments = db.collection("comments")
+    const commentsCount = await comments.countDocuments({ postId: new ObjectId(params.postId) })
+
+    const formattedPost = {
+      _id: post._id.toString(),
+      content: post.content,
+      image: post.image,
       author: {
-        ...postResult[0].author,
-        _id: postResult[0].author._id.toString(),
+        _id: author._id.toString(),
+        name: author.name,
+        email: author.email,
+        avatar: author.avatar,
+        isVerified: author.isVerified || false,
       },
-    };
+      createdAt: post.createdAt,
+      likes: post.likes?.length || 0,
+      likedByUser,
+      commentsCount,
+    }
 
-    return NextResponse.json({ post });
+    return NextResponse.json({ post: formattedPost })
   } catch (error) {
-    console.error("Get post error:", error);
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
+    console.error("Erro ao buscar post:", error)
+    return NextResponse.json({ error: "Erro ao buscar post" }, { status: 500 })
   }
 }
 
@@ -131,46 +78,40 @@ export async function DELETE(
   { params }: { params: { postId: string } }
 ) {
   try {
-    const user = verifyToken(request);
-    if (!user) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
+    const authHeader = request.headers.get("authorization")
+    if (!authHeader) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
     }
 
-    const client = await clientPromise;
-    const db = client.db("socializenow");
-    const posts = db.collection("posts");
+    const token = authHeader.replace("Bearer ", "")
+    const decoded = jwt.verify(token, JWT_SECRET) as any
+    const userId = decoded.userId || decoded.id || decoded._id
 
-    const userId = new ObjectId(user.userId);
-    
-    // Validar se o postId é um ObjectId válido
-    if (!ObjectId.isValid(params.postId)) {
-      return NextResponse.json({ error: "ID do post inválido" }, { status: 400 });
-    }
-    
-    const postId = new ObjectId(params.postId);
+    const client = await clientPromise
+    const db = client.db("socializenow")
+    const posts = db.collection("posts")
 
-    // Primeiro, verificar se o post existe e se o usuário é o autor
-    const existingPost = await posts.findOne({ _id: postId });
-    
-    if (!existingPost) {
-      return NextResponse.json({ error: "Post não encontrado" }, { status: 404 });
+    // Verificar se o post existe e se pertence ao usuário
+    const post = await posts.findOne({ _id: new ObjectId(params.postId) })
+
+    if (!post) {
+      return NextResponse.json({ error: "Post não encontrado" }, { status: 404 })
     }
 
-    // Verificar se o usuário é o autor do post
-    if (!existingPost.authorId.equals(userId)) {
-      return NextResponse.json({ error: "Você não tem permissão para excluir este post" }, { status: 403 });
+    if (post.userId.toString() !== userId) {
+      return NextResponse.json({ error: "Sem permissão para deletar este post" }, { status: 403 })
     }
 
     // Deletar o post
-    await posts.deleteOne({ _id: postId });
+    await posts.deleteOne({ _id: new ObjectId(params.postId) })
 
-    // Também deletar likes e comentários relacionados
-    await db.collection("likes").deleteMany({ postId });
-    await db.collection("comments").deleteMany({ postId });
+    // Opcional: deletar comentários e notificações relacionadas
+    const comments = db.collection("comments")
+    await comments.deleteMany({ postId: new ObjectId(params.postId) })
 
-    return NextResponse.json({ message: "Post excluído com sucesso" });
+    return NextResponse.json({ message: "Post deletado com sucesso" })
   } catch (error) {
-    console.error("Delete post error:", error);
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
+    console.error("Erro ao deletar post:", error)
+    return NextResponse.json({ error: "Erro ao deletar post" }, { status: 500 })
   }
 }

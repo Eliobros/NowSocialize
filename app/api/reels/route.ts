@@ -2,11 +2,9 @@ import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { ObjectId } from "mongodb"
 import clientPromise from "@/lib/mongodb"
-import { s3Client } from "@/lib/s3"
-import { PutObjectCommand } from "@aws-sdk/client-s3"
+import cloudinary from "@/lib/cloudinary"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
-const S3_BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || "socializenow-reels" // Nome do seu bucket S3
 
 function verifyToken(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
@@ -60,7 +58,7 @@ export async function GET(request: NextRequest) {
             content: 1,
             createdAt: 1,
             duration: 1,
-            likes: { $size: "$likes" }, // Contagem de likes
+            likes: { $size: "$likes" },
             commentsCount: 1,
             likedByUser: 1,
             viewedByUser: 1,
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
           },
         },
         { $sort: { createdAt: -1 } },
-        { $limit: 20 }, // Limite inicial de reels
+        { $limit: 20 },
       ])
       .toArray()
 
@@ -94,41 +92,56 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const content = (formData.get("content") as string) || ""
     const video = formData.get("video") as File
-    const duration = Number.parseFloat(formData.get("duration") as string) // Duração em segundos
+    const duration = Number.parseFloat(formData.get("duration") as string)
 
     if (!video) {
       return NextResponse.json({ error: "Vídeo é obrigatório" }, { status: 400 })
     }
 
-    if (video.size > 50 * 1024 * 1024) {
-      // Limite de 50MB
-      return NextResponse.json({ error: "O vídeo deve ter no máximo 50MB" }, { status: 400 })
+    if (video.size > 100 * 1024 * 1024) {
+      // Cloudinary free tier suporta até 100MB
+      return NextResponse.json({ error: "O vídeo deve ter no máximo 100MB" }, { status: 400 })
     }
 
     if (isNaN(duration) || duration <= 0 || duration > 90) {
-      // Limite de 90 segundos (1m 30s)
       return NextResponse.json({ error: "Duração do vídeo inválida ou excede 1 minuto e 30 segundos" }, { status: 400 })
     }
 
     let videoUrl: string
-    const fileExtension = video.name.split(".").pop()
-    const fileName = `${user.userId}_${Date.now()}.${fileExtension}`
+    let publicId: string
 
     try {
+      // Converte o arquivo para base64
       const bytes = await video.arrayBuffer()
       const buffer = Buffer.from(bytes)
+      const base64Video = `data:${video.type};base64,${buffer.toString('base64')}`
 
-      const uploadCommand = new PutObjectCommand({
-        Bucket: S3_BUCKET_NAME,
-        Key: `reels/${fileName}`,
-        Body: buffer,
-        ContentType: video.type,
+      // Upload para o Cloudinary
+      const uploadResult = await cloudinary.uploader.upload(base64Video, {
+        resource_type: 'video',
+        folder: 'reels', // Organiza em pasta
+        public_id: `${user.userId}_${Date.now()}`, // Nome único
+        transformation: [
+          { quality: 'auto', fetch_format: 'auto' }, // Otimização automática
+        ],
+        // Opções adicionais para melhor performance
+        eager: [
+          { streaming_profile: 'hd', format: 'm3u8' }, // Streaming adaptativo
+        ],
+        eager_async: true, // Processa em background
       })
 
-      await s3Client.send(uploadCommand)
-      videoUrl = `https://${S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/reels/${fileName}`
+      videoUrl = uploadResult.secure_url
+      publicId = uploadResult.public_id
+
+      console.log('Upload bem-sucedido:', {
+        url: videoUrl,
+        publicId: publicId,
+        format: uploadResult.format,
+        duration: uploadResult.duration,
+      })
     } catch (error) {
-      console.error("Erro no upload do vídeo para S3:", error)
+      console.error("Erro no upload do vídeo para Cloudinary:", error)
       return NextResponse.json({ error: "Erro ao fazer upload do vídeo" }, { status: 500 })
     }
 
@@ -140,6 +153,7 @@ export async function POST(request: NextRequest) {
       authorId: new ObjectId(user.userId),
       content: content.trim(),
       videoUrl: videoUrl,
+      publicId: publicId, // Salva o publicId para deletar depois se necessário
       duration: duration,
       views: [],
       likes: [],
@@ -157,3 +171,51 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// DELETE - Deletar reel (opcional, mas útil)
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = verifyToken(request)
+    if (!user) {
+      return NextResponse.json({ error: "Token inválido" }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const reelId = searchParams.get("id")
+
+    if (!reelId) {
+      return NextResponse.json({ error: "ID do reel é obrigatório" }, { status: 400 })
+    }
+
+    const client = await clientPromise
+    const db = client.db("socializenow")
+    const reelsCollection = db.collection("reels")
+
+    // Busca o reel para verificar permissão e obter publicId
+    const reel = await reelsCollection.findOne({ _id: new ObjectId(reelId) })
+
+    if (!reel) {
+      return NextResponse.json({ error: "Reel não encontrado" }, { status: 404 })
+    }
+
+    if (reel.authorId.toString() !== user.userId) {
+      return NextResponse.json({ error: "Sem permissão para deletar este reel" }, { status: 403 })
+    }
+
+    // Deleta o vídeo do Cloudinary
+    if (reel.publicId) {
+      try {
+        await cloudinary.uploader.destroy(reel.publicId, { resource_type: 'video' })
+      } catch (error) {
+        console.error("Erro ao deletar vídeo do Cloudinary:", error)
+      }
+    }
+
+    // Deleta o reel do banco
+    await reelsCollection.deleteOne({ _id: new ObjectId(reelId) })
+
+    return NextResponse.json({ message: "Reel deletado com sucesso" })
+  } catch (error) {
+    console.error("Delete reel error:", error)
+    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+  }
+}
