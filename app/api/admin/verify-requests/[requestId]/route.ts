@@ -2,10 +2,13 @@ import { type NextRequest, NextResponse } from "next/server"
 import { ObjectId } from "mongodb"
 import clientPromise from "@/lib/mongodb"
 
-export async function PUT(request: NextRequest, { params }: { params: { requestId: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ requestId: string }> }
+) {
   try {
     const { action } = await request.json()
-    const { requestId } = params
+    const { requestId } = await params
 
     if (!["approve", "reject"].includes(action)) {
       return NextResponse.json({ error: "Ação inválida" }, { status: 400 })

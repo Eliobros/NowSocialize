@@ -10,7 +10,7 @@ cloudinary.config({
 });
 
 // Função para upload via buffer
-function streamUpload(buffer) {
+function streamUpload(buffer: Buffer) {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder: 'test' },
@@ -23,7 +23,7 @@ function streamUpload(buffer) {
   });
 }
 
-export async function POST(req) {
+export async function POST(req: Request) {
   try {
     const data = await req.formData();
     const file = data.get('image');

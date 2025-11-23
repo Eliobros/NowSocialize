@@ -19,12 +19,15 @@ function verifyToken(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { notificationId: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ notificationId: string }> }) {
   try {
     const user = verifyToken(request)
     if (!user) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
+
+    // Await params antes de usar
+    const { notificationId } = await params
 
     const client = await clientPromise
     const db = client.db("socializenow")
@@ -33,7 +36,7 @@ export async function PUT(request: NextRequest, { params }: { params: { notifica
     // Marcar notificação como lida
     const result = await notifications.updateOne(
       {
-        _id: new ObjectId(params.notificationId),
+        _id: new ObjectId(notificationId),
         userId: new ObjectId(user.userId),
       },
       {

@@ -2,10 +2,13 @@ import { type NextRequest, NextResponse } from "next/server"
 import { ObjectId } from "mongodb"
 import clientPromise from "@/lib/mongodb"
 
-export async function PUT(request: NextRequest, { params }: { params: { ticketId: string } }) {
+export async function PUT(
+  request: NextRequest, 
+  context: { params: Promise<{ ticketId: string }> }
+) {
   try {
+    const { ticketId } = await context.params  // ← AWAIT aqui!
     const { action } = await request.json()
-    const { ticketId } = params
 
     if (action !== "close") {
       return NextResponse.json({ error: "Ação inválida" }, { status: 400 })

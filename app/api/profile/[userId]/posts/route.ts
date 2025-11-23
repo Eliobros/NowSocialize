@@ -19,14 +19,14 @@ function verifyToken(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest, { params }: { params: { userId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const user = verifyToken(request)
     if (!user) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const { userId } = params
+    const { userId } = await params
     if (!ObjectId.isValid(userId)) {
       return NextResponse.json({ error: "ID do usuário inválido" }, { status: 400 })
     }

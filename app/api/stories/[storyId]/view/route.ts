@@ -19,7 +19,7 @@ function verifyToken(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { storyId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ storyId: string }> }) {
   try {
     const user = verifyToken(request)
     if (!user) {

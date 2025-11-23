@@ -23,14 +23,14 @@ async function getUserProfile(userId: string) {
           bio: 1,
           avatar: 1,
           isVerified: 1,
-          followers: { 
+          followers: {
             $cond: {
               if: { $isArray: "$followers" },
               then: { $size: "$followers" },
               else: 0
             }
           },
-          following: { 
+          following: {
             $cond: {
               if: { $isArray: "$following" },
               then: { $size: "$following" },
@@ -50,8 +50,9 @@ async function getUserProfile(userId: string) {
 }
 
 // Gerar metadata dinamicamente
-export async function generateMetadata({ params }: { params: { userId: string } }): Promise<Metadata> {
-  const user = await getUserProfile(params.userId)
+export async function generateMetadata({ params }: { params: Promise<{ userId: string }> }): Promise<Metadata> {
+  const { userId } = await params
+  const user = await getUserProfile(userId)
 
   if (!user) {
     return {
@@ -99,6 +100,7 @@ export async function generateMetadata({ params }: { params: { userId: string } 
 }
 
 // Componente principal (server component)
-export default function UserProfilePage({ params }: { params: { userId: string } }) {
-  return <ProfilePageClient params={params} />
+export default async function UserProfilePage({ params }: { params: Promise<{ userId: string }> }) {
+  const resolvedParams = await params
+  return <ProfilePageClient params={resolvedParams} />
 }

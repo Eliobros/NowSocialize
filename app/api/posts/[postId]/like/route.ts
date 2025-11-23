@@ -19,14 +19,14 @@ function verifyToken(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { postId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   try {
     const user = verifyToken(request)
     if (!user) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const { postId } = params
+    const { postId } = await params
     if (!ObjectId.isValid(postId)) {
       return NextResponse.json({ error: "ID do post inválido" }, { status: 400 })
     }
