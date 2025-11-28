@@ -1,3 +1,4 @@
+require('dotenv').config()
 const { createServer } = require("http")
 const { Server } = require("socket.io")
 const next = require("next")
@@ -191,7 +192,7 @@ socket.on("send_message", async (data) => {
   const PORT = process.env.PORT || 3000
   server.listen(PORT, (err) => {
     if (err) throw err
-    console.log(`> Ready on http://108.181.199.60:${PORT}`)
+    console.log(`> Ready on http://208.110.72.191:${PORT}`)
     console.log(`> Socket.IO server running`)
   })
 })

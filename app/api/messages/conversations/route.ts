@@ -1,3 +1,4 @@
+// api/messages/conversations/route.ts - COMPLETO COM SUPORTE A GRUPOS
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { ObjectId } from "mongodb"
@@ -30,14 +31,35 @@ export async function GET(request: NextRequest) {
     const db = client.db("socializenow")
     const conversations = db.collection("conversations")
 
-    // Get conversations where user is a participant
+    // Buscar conversas onde o usuário participa
     const userConversations = await conversations
       .aggregate([
         {
           $match: {
-            participants: new ObjectId(user.userId),
+            $or: [
+              // Conversas diretas onde o usuário é participante
+              { 
+                type: "direct",
+                participants: new ObjectId(user.userId) 
+              },
+              // Grupos (vamos filtrar depois se o usuário é membro)
+              { 
+                type: "group",
+                groupId: { $exists: true }
+              }
+            ]
           },
         },
+        // Lookup para detalhes dos grupos
+        {
+          $lookup: {
+            from: "groups",
+            localField: "groupId",
+            foreignField: "_id",
+            as: "groupDetails"
+          }
+        },
+        // Lookup para participantes das conversas diretas
         {
           $lookup: {
             from: "users",
@@ -46,24 +68,73 @@ export async function GET(request: NextRequest) {
             as: "participantDetails",
           },
         },
+        // Adicionar campos calculados
         {
           $addFields: {
-            participants: "$participantDetails",
-            unreadCount: 0, // TODO: Implement unread count
+            // Para conversas diretas
+            participants: {
+              $cond: {
+                if: { $eq: ["$type", "direct"] },
+                then: "$participantDetails",
+                else: []
+              }
+            },
+            // Para grupos
+            groupInfo: {
+              $cond: {
+                if: { $eq: ["$type", "group"] },
+                then: {
+                  $let: {
+                    vars: { 
+                      group: { $arrayElemAt: ["$groupDetails", 0] } 
+                    },
+                    in: {
+                      name: "$$group.name",
+                      description: "$$group.description",
+                      avatar: "$$group.avatar",
+                      admins: "$$group.admins",
+                      memberCount: { $size: "$$group.members" }
+                    }
+                  }
+                },
+                else: null
+              }
+            },
+            unreadCount: 0, // TODO: Implementar contagem de não lidas
           },
         },
+        // Filtrar apenas grupos onde o usuário é membro
+        {
+          $match: {
+            $or: [
+              { type: "direct" },
+              { 
+                type: "group",
+                "groupDetails.members.userId": new ObjectId(user.userId)
+              }
+            ]
+          }
+        },
+        // Projetar apenas campos necessários
         {
           $project: {
+            type: 1,
+            groupId: 1,
             participants: {
               _id: 1,
               name: 1,
               avatar: 1,
+              isOnline: 1,
+              lastSeen: 1,
             },
+            groupInfo: 1,
             lastMessage: 1,
             unreadCount: 1,
             updatedAt: 1,
+            createdAt: 1,
           },
         },
+        // Ordenar por última atualização
         {
           $sort: { updatedAt: -1 },
         },
@@ -94,8 +165,9 @@ export async function POST(request: NextRequest) {
     const db = client.db("socializenow")
     const conversations = db.collection("conversations")
 
-    // Check if conversation already exists
+    // Verificar se conversa já existe
     const existingConversation = await conversations.findOne({
+      type: "direct",
       participants: {
         $all: [new ObjectId(user.userId), new ObjectId(userId)],
         $size: 2,
@@ -106,8 +178,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ conversationId: existingConversation._id })
     }
 
-    // Create new conversation
+    // Criar nova conversa direta
     const result = await conversations.insertOne({
+      type: "direct",
       participants: [new ObjectId(user.userId), new ObjectId(userId)],
       lastMessage: {
         content: "",

@@ -1,3 +1,4 @@
+// api/messages/route.ts - COMPLETO COM SUPORTE A GRUPOS
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { ObjectId } from "mongodb"
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
     let content: string
     let imageUrl: string | null = null
 
+    // Processar FormData (com imagem) ou JSON (só texto)
     if (contentType?.includes("multipart/form-data")) {
       const formData = await request.formData()
       conversationId = formData.get("conversationId") as string
@@ -46,6 +48,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Conteúdo ou imagem são obrigatórios" }, { status: 400 })
       }
 
+      // Upload da imagem
       if (image) {
         try {
           const bytes = await image.arrayBuffer()
@@ -92,28 +95,41 @@ export async function POST(request: NextRequest) {
     const messages = db.collection("messages")
     const conversations = db.collection("conversations")
 
+    // Buscar conversa
     const conversation = await conversations.findOne({ _id: new ObjectId(conversationId) })
     if (!conversation) {
       return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 })
     }
 
-    const receiverId = conversation.participants.find((p: ObjectId) => !p.equals(new ObjectId(user.userId)))
+    const isGroup = conversation.type === "group"
 
+    // Construir objeto da mensagem
     const messageData: any = {
       conversationId: new ObjectId(conversationId),
       sender: new ObjectId(user.userId),
-      receiver: receiverId,
       content: content.trim(),
       read: false,
       createdAt: new Date(),
+    }
+
+    // Para GRUPOS
+    if (isGroup) {
+      messageData.groupId = conversation.groupId
+      messageData.readBy = [new ObjectId(user.userId)] // Apenas o sender leu inicialmente
+    } else {
+      // Para CONVERSAS DIRETAS
+      const receiverId = conversation.participants.find((p: ObjectId) => !p.equals(new ObjectId(user.userId)))
+      messageData.receiver = receiverId
     }
 
     if (imageUrl) {
       messageData.image = imageUrl
     }
 
+    // Inserir mensagem
     const result = await messages.insertOne(messageData)
 
+    // Atualizar lastMessage da conversa
     const lastMessageContent = imageUrl ? content.trim() || "📷 Imagem" : content.trim()
     await conversations.updateOne(
       { _id: new ObjectId(conversationId) },
@@ -129,35 +145,46 @@ export async function POST(request: NextRequest) {
       }
     )
 
+    // 🔥 EMITIR VIA SOCKET.IO
+    const io = (global as any).io
+    if (io) {
+      // Buscar dados do sender para enviar completo
+      const users = db.collection("users")
+      const senderData = await users.findOne(
+        { _id: new ObjectId(user.userId) },
+        { projection: { name: 1, avatar: 1 } }
+      )
 
-    // ✨ ADICIONA ISSO AQUI ✨
-// Emitir via Socket.io
-const io = (global as any).io
-if (io) {
-  io.to(conversationId).emit('new_message', {
-    _id: result.insertedId.toString(),
-    conversationId: conversationId,
-    sender: {
-      _id: user.userId,
-      // Buscar dados do sender se necessário
-    },
-    receiver: receiverId,
-    content: messageData.content,
-    image: messageData.image,
-    createdAt: messageData.createdAt.toISOString(),
-    read: false
-  })
-  console.log(`✅ Mensagem emitida via Socket.io para conversa ${conversationId}`)
-}
+      const messageToEmit = {
+        _id: result.insertedId.toString(),
+        conversationId: conversationId,
+        sender: {
+          _id: user.userId,
+          name: senderData?.name || "Usuário",
+          avatar: senderData?.avatar || ""
+        },
+        content: messageData.content,
+        image: messageData.image,
+        createdAt: messageData.createdAt.toISOString(),
+        read: false
+      }
 
-return NextResponse.json({
-  message: "Mensagem enviada com sucesso",
-  messageId: result.insertedId,
-  data: {
-    ...messageData,
-    _id: result.insertedId,
-  }
-})
+      if (isGroup) {
+        // Para GRUPOS: emitir para todos na sala do grupo
+        messageToEmit.groupId = conversation.groupId.toString()
+        io.to(conversationId).emit('new_message', messageToEmit)
+        console.log(`✅ Mensagem do grupo emitida para conversa ${conversationId}`)
+      } else {
+        // Para CONVERSAS DIRETAS: emitir para o receiver
+        messageToEmit.receiver = {
+          _id: messageData.receiver.toString(),
+          name: "",
+          avatar: ""
+        }
+        io.to(conversationId).emit('new_message', messageToEmit)
+        console.log(`✅ Mensagem direta emitida para conversa ${conversationId}`)
+      }
+    }
 
     return NextResponse.json({
       message: "Mensagem enviada com sucesso",

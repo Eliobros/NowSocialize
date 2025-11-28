@@ -11,6 +11,9 @@ export async function GET(
   { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
+    // ← ADICIONA ESTA LINHA!
+    const { postId } = await params
+    
     const authHeader = request.headers.get("authorization")
     if (!authHeader) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -25,8 +28,8 @@ export async function GET(
     const posts = db.collection("posts")
     const users = db.collection("users")
 
-    // Buscar o post
-    const post = await posts.findOne({ _id: new ObjectId(params.postId) })
+    // Buscar o post - AGORA USA postId AO INVÉS DE params.postId
+    const post = await posts.findOne({ _id: new ObjectId(postId) })
 
     if (!post) {
       return NextResponse.json({ error: "Post não encontrado" }, { status: 404 })
@@ -45,9 +48,9 @@ export async function GET(
     // Verificar se o usuário atual curtiu o post
     const likedByUser = post.likes?.some((id: ObjectId) => id.toString() === userId)
 
-    // Contar comentários
+    // Contar comentários - USA postId AQUI TAMBÉM
     const comments = db.collection("comments")
-    const commentsCount = await comments.countDocuments({ postId: new ObjectId(params.postId) })
+    const commentsCount = await comments.countDocuments({ postId: new ObjectId(postId) })
 
     const formattedPost = {
       _id: post._id.toString(),
@@ -78,6 +81,9 @@ export async function DELETE(
   { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
+    // ← ADICIONA ESTA LINHA AQUI TAMBÉM!
+    const { postId } = await params
+    
     const authHeader = request.headers.get("authorization")
     if (!authHeader) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -91,8 +97,8 @@ export async function DELETE(
     const db = client.db("socializenow")
     const posts = db.collection("posts")
 
-    // Verificar se o post existe e se pertence ao usuário
-    const post = await posts.findOne({ _id: new ObjectId(params.postId) })
+    // Verificar se o post existe e se pertence ao usuário - USA postId
+    const post = await posts.findOne({ _id: new ObjectId(postId) })
 
     if (!post) {
       return NextResponse.json({ error: "Post não encontrado" }, { status: 404 })
@@ -102,12 +108,12 @@ export async function DELETE(
       return NextResponse.json({ error: "Sem permissão para deletar este post" }, { status: 403 })
     }
 
-    // Deletar o post
-    await posts.deleteOne({ _id: new ObjectId(params.postId) })
+    // Deletar o post - USA postId
+    await posts.deleteOne({ _id: new ObjectId(postId) })
 
-    // Opcional: deletar comentários e notificações relacionadas
+    // Opcional: deletar comentários e notificações relacionadas - USA postId
     const comments = db.collection("comments")
-    await comments.deleteMany({ postId: new ObjectId(params.postId) })
+    await comments.deleteMany({ postId: new ObjectId(postId) })
 
     return NextResponse.json({ message: "Post deletado com sucesso" })
   } catch (error) {
