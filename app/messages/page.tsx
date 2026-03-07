@@ -35,8 +35,9 @@ export default function MessagesPage() {
   const [showGroupInfo, setShowGroupInfo] = useState(false)
   const [isUserScrolling, setIsUserScrolling] = useState(false)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [replyingTo, setReplyingTo] = useState<any>(null)
+  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map())
 
-  // Custom hooks
   const {
     conversations,
     messages,
@@ -49,31 +50,46 @@ export default function MessagesPage() {
     setMessages
   } = useMessages()
 
-  // Socket hook
-  const { isConnected, joinConversation, leaveConversation } = useSocket({
+  const { isConnected, joinConversation, leaveConversation, startTyping, stopTyping } = useSocket({
     userId: currentUserId,
     onNewMessage: (newMessage) => {
-      console.log('📨 Nova mensagem:', newMessage)
       if (newMessage.conversationId === selectedConversation) {
         addMessage(newMessage)
       }
       fetchConversations()
     },
     onUserStatusChanged: ({ userId, isOnline, lastSeen }) => {
-      console.log(`👤 Status: ${userId} - ${isOnline ? 'Online' : 'Offline'}`)
-      // Atualizar status nas conversas se necessário
+      fetchConversations()
+    },
+    onUserTyping: ({ userId, conversationId }) => {
+      if (conversationId === selectedConversation) {
+        setTypingUsers(prev => {
+          const next = new Map(prev)
+          // Find user name from conversation participants
+          const conv = conversations.find(c => c._id === conversationId)
+          const user = conv?.participants.find(p => p._id === userId)
+          next.set(userId, user?.name || "Alguém")
+          return next
+        })
+      }
+    },
+    onUserStopTyping: ({ userId, conversationId }) => {
+      if (conversationId === selectedConversation) {
+        setTypingUsers(prev => {
+          const next = new Map(prev)
+          next.delete(userId)
+          return next
+        })
+      }
     },
     onNewGroup: ({ groupId, conversationId }) => {
-      console.log('🆕 Novo grupo criado')
       fetchConversations()
     },
     onAddedToGroup: ({ groupId, groupName }) => {
-      console.log(`✅ Adicionado ao grupo: ${groupName}`)
       fetchConversations()
     }
   })
 
-  // Initialize
   useEffect(() => {
     const token = localStorage.getItem("token")
     if (!token) {
@@ -97,7 +113,26 @@ export default function MessagesPage() {
     }
   }, [router, searchParams])
 
-  // Join/Leave conversation
+  // Fetch current user data for CallManager
+  useEffect(() => {
+    if (!currentUserId) return
+    const fetchCurrentUser = async () => {
+      try {
+        const token = localStorage.getItem("token")
+        const response = await fetch("/api/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setCurrentUser({ _id: data._id, name: data.name, username: data.username || "", avatar: data.avatar || "" })
+        }
+      } catch (error) {
+        console.error("Error fetching current user:", error)
+      }
+    }
+    fetchCurrentUser()
+  }, [currentUserId])
+
   useEffect(() => {
     if (selectedConversation) {
       joinConversation(selectedConversation)
@@ -108,6 +143,7 @@ export default function MessagesPage() {
   }, [selectedConversation])
 
   const handleSelectConversation = async (conversationId: string) => {
+    setTypingUsers(new Map())
     setSelectedConversation(conversationId)
     await fetchMessages(conversationId)
   }
@@ -115,17 +151,43 @@ export default function MessagesPage() {
   const handleSendMessage = async (content: string, image?: File) => {
     if (!selectedConversation) return false
     
-    const success = await sendMessage(selectedConversation, content, image)
+    const success = await sendMessage(selectedConversation, content, image, replyingTo?._id)
     if (success) {
+      setReplyingTo(null)
       await fetchMessages(selectedConversation)
       await fetchConversations()
     }
     return success
   }
 
+  const fetchFollowingSuggestions = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/following?limit=20`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        return (data.following || []).map((f: any) => ({
+          _id: f._id,
+          name: f.name,
+          username: f.username || "",
+          avatar: f.avatar || ""
+        }))
+      }
+    } catch (error) {
+      console.error("Erro ao buscar seguindo")
+    }
+    return []
+  }
+
   const searchUsersForChat = async (query: string) => {
     if (!query.trim()) {
-      setSearchUsers([])
+      // Quando não há texto, mostrar quem o usuário segue
+      setSearchingUsers(true)
+      const suggestions = await fetchFollowingSuggestions()
+      setSearchUsers(suggestions)
+      setSearchingUsers(false)
       return
     }
 
@@ -187,54 +249,64 @@ export default function MessagesPage() {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   }
 
+  const handleBackToList = () => {
+    setSelectedConversation(null)
+  }
+
   const selectedConv = conversations.find(c => c._id === selectedConversation)
   const isGroupChat = selectedConv?.type === 'group'
 
   const filteredConversations = conversations.filter((conversation) => {
     if (conversation.type === 'group') {
       const groupInfo = (conversation as any).groupInfo
-      return groupInfo?.name.toLowerCase().includes(searchTerm.toLowerCase())
+      return groupInfo?.name?.toLowerCase().includes(searchTerm.toLowerCase())
     }
     const otherParticipant = conversation.participants.find((p) => p._id !== currentUserId)
-    return otherParticipant?.name.toLowerCase().includes(searchTerm.toLowerCase())
+    return otherParticipant?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   })
 
   if (loading && conversations.length === 0) {
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
+      <div className="min-h-screen bg-background">
         <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </div>
     )
   }
 
-  // Desktop Layout
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Sidebar - Lista de Conversas */}
-          <div className="lg:col-span-1 h-[calc(100vh-200px)] bg-white rounded-lg shadow-sm border">
+    <div className="min-h-screen bg-background">
+      {/* Esconder navbar e bottom nav no mobile quando estiver numa conversa */}
+      <div className={selectedConversation ? 'hidden lg:block' : ''}>
+        <Navbar />
+      </div>
+      <div className="container mx-auto px-0 sm:px-4 py-0 sm:py-6 max-w-6xl">
+        <div className={`flex ${selectedConversation ? 'h-screen lg:h-[calc(100vh-8rem)]' : 'h-[calc(100vh-4rem)] sm:h-[calc(100vh-8rem)]'} overflow-hidden sm:rounded-xl sm:border border-border sm:shadow-sm`}>
+          {/* Sidebar - Conversation List */}
+          <div className={`w-full lg:w-[380px] lg:min-w-[380px] border-r border-border bg-card flex flex-col ${selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="flex items-center gap-2 font-semibold">
-                <MessageCircle className="h-5 w-5" />
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+                <MessageCircle className="h-5 w-5 text-primary" />
                 Mensagens
               </h2>
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
                   <DialogTrigger asChild>
-                    <Button size="sm" variant="outline" className="h-8 w-8 p-0">
+                    <Button size="sm" variant="ghost" className="h-9 w-9 p-0 rounded-full">
                       <Users className="h-4 w-4" />
                     </Button>
                   </DialogTrigger>
                 </Dialog>
-                <Dialog open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
+                <Dialog open={showNewChatDialog} onOpenChange={(open) => {
+                  setShowNewChatDialog(open)
+                  if (open && searchUsers.length === 0) {
+                    searchUsersForChat("")
+                  }
+                }}>
                   <DialogTrigger asChild>
-                    <Button size="sm" className="h-8 w-8 p-0">
+                    <Button size="sm" variant="ghost" className="h-9 w-9 p-0 rounded-full">
                       <Plus className="h-4 w-4" />
                     </Button>
                   </DialogTrigger>
@@ -252,22 +324,22 @@ export default function MessagesPage() {
                         }}
                       />
                       <ScrollArea className="h-60">
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {searchUsers.map((user) => (
                             <div
                               key={user._id}
-                              className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                              className="flex items-center gap-3 p-3 hover:bg-muted rounded-lg cursor-pointer transition-colors"
                               onClick={() => handleStartNewConversation(user._id)}
                             >
-                              <Avatar className="h-12 w-12">
+                              <Avatar className="h-10 w-10">
                                 <AvatarImage src={user.avatar} alt={user.name} />
-                                <AvatarFallback className="bg-blue-600 text-white">
+                                <AvatarFallback className="bg-primary text-primary-foreground">
                                   {getInitials(user.name)}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="font-medium">{user.name}</p>
-                                {user.username && <p className="text-sm text-gray-500">@{user.username}</p>}
+                                <p className="font-medium text-foreground">{user.name}</p>
+                                {user.username && <p className="text-sm text-muted-foreground">@{user.username}</p>}
                               </div>
                             </div>
                           ))}
@@ -280,19 +352,19 @@ export default function MessagesPage() {
             </div>
 
             {/* Search */}
-            <div className="p-4 border-b">
+            <div className="p-3 border-b border-border">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Pesquisar conversas..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 bg-muted/50 border-0 focus-visible:ring-1"
                 />
               </div>
             </div>
 
-            {/* Lista de conversas */}
+            {/* Conversations */}
             <ConversationList
               conversations={filteredConversations}
               selectedConversation={selectedConversation}
@@ -302,24 +374,36 @@ export default function MessagesPage() {
           </div>
 
           {/* Main - Chat Window */}
-          <div className="lg:col-span-2 h-[calc(100vh-200px)] bg-white rounded-lg shadow-sm border flex flex-col">
+          <div className={`flex-1 flex flex-col bg-background ${!selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
             <ChatWindow
               conversation={selectedConv || null}
               messages={messages}
               currentUserId={currentUserId}
-              onCall={(type) => console.log("Call:", type)}
+              onCall={(type) => {
+                const otherParticipant = selectedConv?.participants.find(p => p._id !== currentUserId)
+                if (otherParticipant && typeof window !== 'undefined' && (window as any).startCall) {
+                  (window as any).startCall(otherParticipant._id, otherParticipant.name, type)
+                }
+              }}
               onInfo={() => isGroupChat && setShowGroupInfo(true)}
+              onBack={handleBackToList}
               isUserScrolling={isUserScrolling}
               shouldAutoScroll={shouldAutoScroll}
               onScroll={handleScroll}
               onScrollToBottom={handleScrollToBottom}
+              onReplyMessage={(msg) => setReplyingTo(msg)}
+              typingUsers={Array.from(typingUsers.values())}
             />
 
             {selectedConversation && (
               <MessageInput
                 onSendMessage={handleSendMessage}
-                disabled={!isConnected}
+                disabled={false}
                 placeholder="Digite sua mensagem..."
+                replyingTo={replyingTo}
+                onCancelReply={() => setReplyingTo(null)}
+                onTypingStart={() => selectedConversation && startTyping(selectedConversation)}
+                onTypingStop={() => selectedConversation && stopTyping(selectedConversation)}
               />
             )}
           </div>
@@ -342,7 +426,6 @@ export default function MessagesPage() {
         />
       )}
 
-      {/* Call Manager */}
       {currentUserId && currentUser && (
         <CallManager currentUserId={currentUserId} currentUserName={currentUser.name} />
       )}

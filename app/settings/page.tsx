@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { CheckCircle, Shield, HelpCircle, Loader2, Upload, Trash2, UserX, AlertTriangle } from "lucide-react"
+import { CheckCircle, Shield, HelpCircle, Loader2, Upload, Trash2, UserX, AlertTriangle, Ban } from "lucide-react"
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)

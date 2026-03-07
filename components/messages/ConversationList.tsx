@@ -3,7 +3,8 @@
 import React from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { MessageCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { MessageCircle, Users } from "lucide-react"
 import { Conversation } from "@/types/message"
 
 interface ConversationListProps {
@@ -35,7 +36,8 @@ export function ConversationList({
       .slice(0, 2)
   }
 
-  const formatMessageTime = (dateString: string) => {
+  const formatMessageTime = (dateString?: string) => {
+    if (!dateString) return ""
     const date = new Date(dateString)
     const now = new Date()
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
@@ -63,125 +65,132 @@ export function ConversationList({
     const diffInMinutes = Math.floor((now.getTime() - lastSeenDate.getTime()) / (1000 * 60))
 
     if (diffInMinutes < 1) return "Online"
-    if (diffInMinutes < 60) return `Online há ${diffInMinutes} min`
-    if (diffInMinutes < 1440) return `Online há ${Math.floor(diffInMinutes / 60)}h`
-    return `Online há ${Math.floor(diffInMinutes / 1440)} dias`
+    if (diffInMinutes < 60) return `há ${diffInMinutes} min`
+    if (diffInMinutes < 1440) return `há ${Math.floor(diffInMinutes / 60)}h`
+    return `há ${Math.floor(diffInMinutes / 1440)}d`
   }
 
   if (conversations.length === 0) {
     return (
-      <div className="text-center py-8 px-4">
-        <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500">{emptyMessage}</p>
+      <div className="flex-1 flex flex-col items-center justify-center py-12 px-4">
+        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+          <MessageCircle className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <p className="text-muted-foreground text-sm text-center">{emptyMessage}</p>
       </div>
     )
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="divide-y divide-gray-100">
+    <ScrollArea className="flex-1">
+      <div className="py-1">
         {conversations.map((conversation) => {
           const otherParticipant = conversation.type === 'direct' 
             ? getOtherParticipant(conversation)
             : null
 
-          // Para grupos
           if (conversation.type === 'group') {
             const groupInfo = (conversation as any).groupInfo
             return (
               <div
                 key={conversation._id}
-                className={`p-4 cursor-pointer transition-colors ${
+                className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all ${
                   selectedConversation === conversation._id
-                    ? "bg-blue-50 border-l-4 border-blue-500"
-                    : "hover:bg-gray-50"
+                    ? "bg-primary/10 border-l-3 border-l-primary"
+                    : "hover:bg-muted/50"
                 }`}
                 onClick={() => onSelectConversation(conversation._id)}
               >
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-14 w-14">
+                <div className="relative">
+                  <Avatar className="h-12 w-12">
                     <AvatarImage src={groupInfo?.avatar} alt={groupInfo?.name} />
-                    <AvatarFallback className="bg-green-600 text-white">
+                    <AvatarFallback className="bg-emerald-600 text-white text-sm">
                       {getInitials(groupInfo?.name || "Grupo")}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="font-semibold text-black truncate">
-                        {groupInfo?.name || "Grupo"}
-                      </p>
-                      <span className="text-xs text-gray-500">
-                        {formatMessageTime(conversation.lastMessage.createdAt)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 truncate">
-                      {conversation.lastMessage.content}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {groupInfo?.memberCount || 0} membros
-                    </p>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-emerald-600 rounded-full flex items-center justify-center border-2 border-card">
+                    <Users className="h-2.5 w-2.5 text-white" />
                   </div>
-                  {conversation.unreadCount > 0 && (
-                    <div className="bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">
-                      {conversation.unreadCount}
-                    </div>
-                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-foreground truncate text-sm">
+                      {groupInfo?.name || "Grupo"}
+                    </p>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                      {formatMessageTime(conversation.lastMessage?.createdAt)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <p className="text-xs text-muted-foreground truncate">
+                      {conversation.lastMessage?.content || "Nenhuma mensagem ainda"}
+                    </p>
+                    {conversation.unreadCount > 0 && (
+                      <Badge className="h-5 min-w-5 rounded-full px-1.5 text-[10px] bg-primary text-primary-foreground">
+                        {conversation.unreadCount}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {groupInfo?.memberCount || 0} membros
+                  </p>
                 </div>
               </div>
             )
           }
 
-          // Para conversas diretas
           if (!otherParticipant) return null
 
           return (
             <div
               key={conversation._id}
-              className={`p-4 cursor-pointer transition-colors ${
+              className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all ${
                 selectedConversation === conversation._id
-                  ? "bg-blue-50 border-l-4 border-blue-500"
-                  : "hover:bg-gray-50"
+                  ? "bg-primary/10 border-l-3 border-l-primary"
+                  : "hover:bg-muted/50"
               }`}
               onClick={() => onSelectConversation(conversation._id)}
             >
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Avatar className="h-14 w-14">
-                    {otherParticipant.avatar && (
-                      <AvatarImage
-                        src={otherParticipant.avatar}
-                        alt={otherParticipant.name}
-                      />
-                    )}
-                    <AvatarFallback className="bg-blue-600 text-white">
-                      {getInitials(otherParticipant.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  {otherParticipant.isOnline && (
-                    <div className="absolute -bottom-0 -right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+              <div className="relative">
+                <Avatar className="h-12 w-12">
+                  {otherParticipant.avatar && (
+                    <AvatarImage
+                      src={otherParticipant.avatar}
+                      alt={otherParticipant.name}
+                    />
+                  )}
+                  <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                    {getInitials(otherParticipant.name)}
+                  </AvatarFallback>
+                </Avatar>
+                {otherParticipant.isOnline && (
+                  <div className="absolute -bottom-0 -right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-card rounded-full"></div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-foreground truncate text-sm">
+                    {otherParticipant.name}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                      {formatMessageTime(conversation.lastMessage?.createdAt)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-0.5">
+                  <p className="text-xs text-muted-foreground truncate">
+                    {conversation.lastMessage?.content || "Nenhuma mensagem ainda"}
+                  </p>
+                  {conversation.unreadCount > 0 && (
+                    <Badge className="h-5 min-w-5 rounded-full px-1.5 text-[10px] bg-primary text-primary-foreground">
+                      {conversation.unreadCount}
+                    </Badge>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold text-black truncate">
-                      {otherParticipant.name}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">
-                        {formatMessageTime(conversation.lastMessage.createdAt)}
-                      </span>
-                      {conversation.unreadCount > 0 && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 truncate">
-                    {conversation.lastMessage.content}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {formatLastSeen(otherParticipant.lastSeen)}
-                  </p>
-                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {formatLastSeen(otherParticipant.lastSeen)}
+                </p>
               </div>
             </div>
           )

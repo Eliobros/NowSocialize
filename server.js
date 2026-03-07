@@ -44,17 +44,10 @@ app.prepare().then(() => {
     
     try {
       const now = new Date()
-      const updateData = {
-        lastSeen: now.toISOString(),
-      }
-      
-      if (isOnline) {
-        updateData.isOnline = true
-      }
       
       await db.collection("users").updateOne(
         { _id: new ObjectId(userId) },
-        { $set: updateData }
+        { $set: { isOnline, lastSeen: now.toISOString() } }
       )
       
       // Broadcast online status to all connected users
@@ -159,6 +152,27 @@ socket.on("leave_conversation", (conversationId) => {
   console.log(`User ${socket.userId} left conversation ${conversationId}`)
 })
 
+// Typing indicator
+socket.on("typing_start", (data) => {
+  const { conversationId } = data
+  if (conversationId && socket.userId) {
+    socket.to(conversationId).emit("user_typing", {
+      userId: socket.userId,
+      conversationId,
+    })
+  }
+})
+
+socket.on("typing_stop", (data) => {
+  const { conversationId } = data
+  if (conversationId && socket.userId) {
+    socket.to(conversationId).emit("user_stop_typing", {
+      userId: socket.userId,
+      conversationId,
+    })
+  }
+})
+
 // Enviar mensagem (opcional - pode usar só via API)
 socket.on("send_message", async (data) => {
   const { conversationId, content, image } = data
@@ -192,7 +206,10 @@ socket.on("send_message", async (data) => {
   const PORT = process.env.PORT || 3000
   server.listen(PORT, (err) => {
     if (err) throw err
-    console.log(`> Ready on http://208.110.72.191:${PORT}`)
+    const { networkInterfaces } = require('os')
+const nets = networkInterfaces()
+const ip = Object.values(nets).flat().find(n => n.family === 'IPv4' && !n.internal)?.address || 'localhost'
+console.log(`> Ready on http://${ip}:${PORT}`)
     console.log(`> Socket.IO server running`)
   })
 })

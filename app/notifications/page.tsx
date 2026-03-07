@@ -7,11 +7,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Bell, Heart, MessageCircle, UserPlus, Check } from "lucide-react"
+import { Loader2, Bell, Heart, MessageCircle, UserPlus, Check, Share2 } from "lucide-react"
 
 interface Notification {
   _id: string
-  type: "like" | "comment" | "follow" | "mention"
+  type: "like" | "comment" | "follow" | "mention" | "share"
   message: string
   from: {
     _id: string
@@ -120,6 +120,7 @@ export default function NotificationsPage() {
         break
       case "like":
       case "comment":
+      case "share":
         console.log('Navegando para post:', notification.postId) // Debug
         if (notification.postId) {
           router.push(`/post/${notification.postId}`)
@@ -146,8 +147,10 @@ export default function NotificationsPage() {
         return <MessageCircle className="h-5 w-5 text-blue-500" />
       case "follow":
         return <UserPlus className="h-5 w-5 text-green-500" />
+      case "share":
+        return <Share2 className="h-5 w-5 text-green-500" />
       default:
-        return <Bell className="h-5 w-5 text-gray-500" />
+        return <Bell className="h-5 w-5 text-muted-foreground" />
     }
   }
 
@@ -230,7 +233,7 @@ export default function NotificationsPage() {
           {notifications.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">Nenhuma notificação encontrada</p>
               </CardContent>
             </Card>

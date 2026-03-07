@@ -191,7 +191,7 @@ export default function FeedPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 overflow-x-hidden">
+      <div className="min-h-screen bg-background overflow-x-hidden">
         <Navbar />
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -201,7 +201,7 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <Navbar />
       {/* Use user?.userEmailVerified para acessar o status */}
       {!user?.userEmailVerified && (
@@ -251,7 +251,7 @@ export default function FeedPage() {
         </Alert>
       )}
       {/* Stories Section - Mobile */}
-      <div className="md:hidden bg-white border-b border-gray-200">
+      <div className="md:hidden bg-card border-b border-border">
         <StoriesSection onCreateStory={() => setShowCreateStory(true)} />
       </div>
       <div className="container mx-auto px-4 py-8 max-w-2xl overflow-x-hidden">
@@ -331,7 +331,7 @@ export default function FeedPage() {
           {posts.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <p className="text-gray-500">Nenhum post encontrado. Seja o primeiro a postar!</p>
+                <p className="text-muted-foreground">Nenhum post encontrado. Seja o primeiro a postar!</p>
               </CardContent>
             </Card>
           ) : (

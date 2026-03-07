@@ -70,6 +70,24 @@ export async function GET(request: NextRequest) {
           },
         },
         {
+          $lookup: {
+            from: "posts",
+            localField: "sharedPostId",
+            foreignField: "_id",
+            as: "sharedPostData",
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            let: { sharedAuthorId: { $arrayElemAt: ["$sharedPostData.authorId", 0] } },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$_id", "$$sharedAuthorId"] } } },
+            ],
+            as: "sharedPostAuthor",
+          },
+        },
+        {
           $addFields: {
             likedByUser: { $gt: [{ $size: "$userLiked" }, 0] },
             commentsCount: { $size: "$comments" },
@@ -83,11 +101,36 @@ export async function GET(request: NextRequest) {
             likes: 1,
             likedByUser: 1,
             commentsCount: 1,
+            sharesCount: 1,
             "author._id": 1,
             "author.name": 1,
             "author.email": 1,
             "author.avatar": 1,
             "author.isVerified": 1,
+            sharedPost: {
+              $cond: {
+                if: { $gt: [{ $size: "$sharedPostData" }, 0] },
+                then: {
+                  _id: { $arrayElemAt: ["$sharedPostData._id", 0] },
+                  content: { $arrayElemAt: ["$sharedPostData.content", 0] },
+                  image: { $arrayElemAt: ["$sharedPostData.image", 0] },
+                  createdAt: { $arrayElemAt: ["$sharedPostData.createdAt", 0] },
+                  author: {
+                    $cond: {
+                      if: { $gt: [{ $size: "$sharedPostAuthor" }, 0] },
+                      then: {
+                        _id: { $arrayElemAt: ["$sharedPostAuthor._id", 0] },
+                        name: { $arrayElemAt: ["$sharedPostAuthor.name", 0] },
+                        avatar: { $arrayElemAt: ["$sharedPostAuthor.avatar", 0] },
+                        isVerified: { $arrayElemAt: ["$sharedPostAuthor.isVerified", 0] },
+                      },
+                      else: null,
+                    },
+                  },
+                },
+                else: null,
+              },
+            },
           },
         },
         {

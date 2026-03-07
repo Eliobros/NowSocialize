@@ -25,9 +25,12 @@ import {
   FileText,
   Settings,
   Eye,
-  MoreHorizontal
+  MoreHorizontal,
+  Search as SearchIcon,
+  TrendingUp
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface Page {
   _id: string
@@ -243,7 +246,7 @@ export default function PagesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Navbar />
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -253,13 +256,13 @@ export default function PagesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold">Minhas Páginas</h1>
-            <p className="text-gray-600 mt-2">Gerencie suas páginas e comunidades</p>
+            <p className="text-muted-foreground mt-2">Gerencie suas páginas e comunidades</p>
           </div>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
@@ -319,7 +322,7 @@ export default function PagesPage() {
                     onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
                     placeholder="minha-pagina-legal"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Sua página ficará em: socializenow.com/page/{formData.customUrl || "url-personalizada"}
                   </p>
                 </div>
@@ -330,7 +333,7 @@ export default function PagesPage() {
                     onCheckedChange={(checked) => setFormData({ ...formData, isPublic: checked })}
                   />
                   <Label>Página pública</Label>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     {formData.isPublic ? "Qualquer pessoa pode ver" : "Apenas seguidores podem ver"}
                   </p>
                 </div>
@@ -356,109 +359,141 @@ export default function PagesPage() {
           </Alert>
         )}
 
-        {pages.length === 0 ? (
-          <Card>
-            <CardContent className="text-center py-12">
-              <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Nenhuma página ainda</h3>
-              <p className="text-gray-600 mb-6">
-                Crie sua primeira página para começar a construir sua comunidade
-              </p>
-              <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Criar Primeira Página
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pages.map((page) => (
-              <Card key={page._id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={page.avatar} />
-                        <AvatarFallback className="bg-blue-600 text-white">
-                          {page.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <h3 className="font-semibold text-lg flex items-center gap-2">
-                          {page.name}
-                          {page.isVerified && <Badge variant="secondary">✓</Badge>}
-                        </h3>
-                        <p className="text-sm text-gray-600">{page.category}</p>
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/page/${page._id}`)}>
-                          <Eye className="h-4 w-4 mr-2" />
-                          Ver Página
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditDialog(page)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => openDeleteDialog(page)}
-                          className="text-red-600 focus:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Deletar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <p className="text-gray-700 text-sm mb-4 line-clamp-2">{page.description}</p>
-                  
-                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      {page.followersCount} seguidores
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <FileText className="h-4 w-4" />
-                      {page.postsCount} posts
-                    </div>
-                  </div>
+        <Tabs defaultValue="my-pages" className="mb-6">
+          <TabsList className="w-full grid grid-cols-2">
+            <TabsTrigger value="my-pages">Minhas Páginas</TabsTrigger>
+            <TabsTrigger value="discover">Descobrir</TabsTrigger>
+          </TabsList>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {page.isPublic ? (
-                        <Badge variant="secondary" className="gap-1">
-                          <Globe className="h-3 w-3" />
-                          Pública
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="gap-1">
-                          <Lock className="h-3 w-3" />
-                          Privada
-                        </Badge>
-                      )}
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => router.push(`/page/${page._id}`)}
-                    >
-                      <Eye className="h-4 w-4 mr-2" />
-                      Ver
-                    </Button>
-                  </div>
+          <TabsContent value="my-pages">
+            {pages.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <FileText className="h-16 w-16 text-muted-foreground/50 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Nenhuma página ainda</h3>
+                  <p className="text-muted-foreground mb-6">
+                    Crie sua primeira página para começar a construir sua comunidade
+                  </p>
+                  <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Criar Primeira Página
+                  </Button>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {pages.map((page) => (
+                  <Card key={page._id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-12 w-12">
+                            <AvatarImage src={page.avatar} />
+                            <AvatarFallback className="bg-blue-600 text-white">
+                              {page.name.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h3 className="font-semibold text-lg flex items-center gap-2">
+                              {page.name}
+                              {page.isVerified && <Badge variant="secondary">✓</Badge>}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">{page.category}</p>
+                          </div>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => router.push(`/page/${page._id}`)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Ver Página
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(page)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => openDeleteDialog(page)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Deletar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <p className="text-foreground text-sm mb-4 line-clamp-2">{page.description}</p>
+                      
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                        <div className="flex items-center gap-1">
+                          <Users className="h-4 w-4" />
+                          {page.followersCount} seguidores
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <FileText className="h-4 w-4" />
+                          {page.postsCount} posts
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {page.isPublic ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <Globe className="h-3 w-3" />
+                              Pública
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="gap-1">
+                              <Lock className="h-3 w-3" />
+                              Privada
+                            </Badge>
+                          )}
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => router.push(`/page/${page._id}`)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="discover">
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="relative flex-1">
+                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Buscar páginas..." className="pl-10" />
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                <Card className="border-dashed">
+                  <CardContent className="text-center py-12">
+                    <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2 text-foreground">Páginas Populares</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Em breve você poderá descobrir páginas incríveis de outros criadores!
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
 
         {/* Edit Dialog */}
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
@@ -540,7 +575,7 @@ export default function PagesPage() {
               <DialogTitle className="text-red-600">Deletar Página</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Tem certeza de que deseja deletar a página "{selectedPage?.name}"? 
                 Esta ação não pode ser desfeita.
               </p>

@@ -66,8 +66,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const notifications = db.collection("notifications")
         await notifications.insertOne({
           userId: post.authorId,
+          fromUserId: userId,
           type: "like",
           message: `${user.name} curtiu seu post`,
+          postId: postObjectId,
           read: false,
           createdAt: new Date(),
         })

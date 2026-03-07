@@ -6,6 +6,8 @@ interface UseSocketOptions {
   userId: string
   onNewMessage?: (message: any) => void
   onUserStatusChanged?: (data: { userId: string; isOnline: boolean; lastSeen?: string }) => void
+  onUserTyping?: (data: { userId: string; conversationId: string }) => void
+  onUserStopTyping?: (data: { userId: string; conversationId: string }) => void
   onNewGroup?: (data: any) => void
   onGroupUpdated?: (data: any) => void
   onMembersAdded?: (data: any) => void
@@ -69,6 +71,14 @@ export function useSocket(options: UseSocketOptions) {
     // Eventos de status de usuário
     if (options.onUserStatusChanged) {
       socket.on('user-status-changed', options.onUserStatusChanged)
+    }
+
+    // Eventos de typing
+    if (options.onUserTyping) {
+      socket.on('user_typing', options.onUserTyping)
+    }
+    if (options.onUserStopTyping) {
+      socket.on('user_stop_typing', options.onUserStopTyping)
     }
 
     // Eventos de grupos
@@ -146,6 +156,18 @@ export function useSocket(options: UseSocketOptions) {
     }
   }
 
+  const startTyping = (conversationId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('typing_start', { conversationId })
+    }
+  }
+
+  const stopTyping = (conversationId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('typing_stop', { conversationId })
+    }
+  }
+
   const emitEvent = (eventName: string, data: any) => {
     if (socketRef.current?.connected) {
       socketRef.current.emit(eventName, data)
@@ -158,6 +180,8 @@ export function useSocket(options: UseSocketOptions) {
     connectionError,
     joinConversation,
     leaveConversation,
+    startTyping,
+    stopTyping,
     emitEvent
   }
 }

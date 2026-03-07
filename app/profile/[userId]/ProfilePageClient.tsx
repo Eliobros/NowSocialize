@@ -152,7 +152,7 @@ export default function ProfilePageClient({ params }: { params: { userId: string
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Navbar />
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -163,7 +163,7 @@ export default function ProfilePageClient({ params }: { params: { userId: string
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Navbar />
         <div className="container mx-auto px-4 py-8 max-w-2xl">
           <Alert variant="destructive">
@@ -175,7 +175,7 @@ export default function ProfilePageClient({ params }: { params: { userId: string
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         {error && (
@@ -198,8 +198,8 @@ export default function ProfilePageClient({ params }: { params: { userId: string
               </Avatar>
               <div className="flex-1 text-center sm:text-left">
                 <CardTitle className="text-2xl mb-2">{profile.name}</CardTitle>
-                <p className="text-gray-600 mb-2">@{profile.username}</p>
-                {profile.bio && <p className="text-gray-700 mb-4">{profile.bio}</p>}
+                <p className="text-muted-foreground mb-2">@{profile.username}</p>
+                {profile.bio && <p className="text-foreground mb-4">{profile.bio}</p>}
                 <div className="flex justify-center sm:justify-start gap-4 mb-4">
                   <Badge variant="secondary">{profile.postsCount} Posts</Badge>
                   <Badge variant="secondary">{profile.followers} Seguidores</Badge>
@@ -234,7 +234,7 @@ export default function ProfilePageClient({ params }: { params: { userId: string
           {posts.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
-                <p className="text-gray-500">Nenhum post encontrado.</p>
+                <p className="text-muted-foreground">Nenhum post encontrado.</p>
               </CardContent>
             </Card>
           ) : (

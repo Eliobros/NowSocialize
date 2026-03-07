@@ -58,11 +58,44 @@ export async function GET(
             from: "users",
             localField: "receiver",
             foreignField: "_id",
-            as: "receiver",
+            as: "receiverData",
           },
         },
         { $unwind: "$sender" },
-        { $unwind: "$receiver" },
+        {
+          $unwind: {
+            path: "$receiverData",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $lookup: {
+            from: "messages",
+            localField: "replyToId",
+            foreignField: "_id",
+            as: "replyToData",
+          },
+        },
+        {
+          $unwind: {
+            path: "$replyToData",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "replyToData.sender",
+            foreignField: "_id",
+            as: "replyToSender",
+          },
+        },
+        {
+          $unwind: {
+            path: "$replyToSender",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
         {
           $project: {
             content: 1,
@@ -75,9 +108,23 @@ export async function GET(
             "sender._id": 1,
             "sender.name": 1,
             "sender.avatar": 1,
-            "receiver._id": 1,
-            "receiver.name": 1,
-            "receiver.avatar": 1,
+            "receiver._id": "$receiverData._id",
+            "receiver.name": "$receiverData.name",
+            "receiver.avatar": "$receiverData.avatar",
+            replyTo: {
+              $cond: {
+                if: "$replyToData",
+                then: {
+                  _id: "$replyToData._id",
+                  content: "$replyToData.content",
+                  sender: {
+                    _id: "$replyToSender._id",
+                    name: "$replyToSender.name",
+                  },
+                },
+                else: "$$REMOVE",
+              },
+            },
           },
         },
         {

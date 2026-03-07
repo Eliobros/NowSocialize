@@ -25,15 +25,30 @@ interface Post {
   likes: number
   likedByUser: boolean
   commentsCount: number
+  sharedPost?: {
+    _id: string
+    content: string
+    image?: string
+    createdAt: string
+    author: {
+      _id: string
+      name: string
+      avatar?: string
+      isVerified?: boolean
+    }
+  }
+  sharesCount?: number
 }
 
 interface Comment {
   _id: string
   content: string
   createdAt: string
+  parentCommentId?: string
   author: {
     _id: string
     name: string
+    username?: string
     avatar?: string
   }
 }
@@ -55,8 +70,12 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [showCommentsDialog, setShowCommentsDialog] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [shareCount, setShareCount] = useState(post.sharesCount || 0)
+  const [isSharing, setIsSharing] = useState(false)
+  const [shareText, setShareText] = useState("")
 
   const getInitials = (name: string) => {
     return name
@@ -138,13 +157,17 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ content: comment }),
+        body: JSON.stringify({ 
+          content: replyingTo ? `@${replyingTo.author.username || replyingTo.author.name} ${comment}` : comment,
+          parentCommentId: replyingTo?._id 
+        }),
       })
 
       if (response.ok) {
         setComment("")
         setCommentCount((prev) => prev + 1)
         fetchComments()
+        setReplyingTo(null)
       }
     } catch (error) {
       console.error("Error commenting:", error)
@@ -189,6 +212,33 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
     setShowShareDialog(false)
   }
 
+  const handleInternalShare = async () => {
+    if (isSharing) return
+    setIsSharing(true)
+    try {
+      const token = localStorage.getItem("token")
+      const sharePostId = post.sharedPost ? post.sharedPost._id : post._id
+      const response = await fetch(`/api/posts/${sharePostId}/share`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: shareText }),
+      })
+      if (response.ok) {
+        setShareCount((prev) => prev + 1)
+        setShowShareDialog(false)
+        setShareText("")
+        alert("Post compartilhado no seu feed!")
+      }
+    } catch (error) {
+      console.error("Erro ao compartilhar:", error)
+    } finally {
+      setIsSharing(false)
+    }
+  }
+
   const handleDeletePost = async () => {
     setIsDeleting(true)
     try {
@@ -213,6 +263,20 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  const renderMentions = (text: string) => {
+    const parts = text.split(/(@\w+)/g)
+    return parts.map((part, i) => {
+      if (part.startsWith("@")) {
+        return (
+          <Link key={i} href={`/search?q=${part.slice(1)}`} className="text-primary font-semibold hover:underline">
+            {part}
+          </Link>
+        )
+      }
+      return part
+    })
   }
 
   return (
@@ -273,6 +337,32 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
           </div>
         )}
 
+        {post.sharedPost && (
+          <div className="mb-4 border border-border rounded-lg overflow-hidden bg-muted/30">
+            <div className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Avatar className="h-6 w-6">
+                  {post.sharedPost.author?.avatar && (
+                    <AvatarImage src={post.sharedPost.author.avatar} alt={post.sharedPost.author.name} />
+                  )}
+                  <AvatarFallback className="text-[10px]">{getInitials(post.sharedPost.author?.name || "U")}</AvatarFallback>
+                </Avatar>
+                <Link href={`/profile/${post.sharedPost.author?._id}`} className="text-sm font-semibold hover:text-blue-600 flex items-center gap-1">
+                  {post.sharedPost.author?.name}
+                  {post.sharedPost.author?.isVerified && <CheckCircle className="h-3 w-3 text-blue-500" />}
+                </Link>
+                <span className="text-xs text-muted-foreground">{formatDate(post.sharedPost.createdAt)}</span>
+              </div>
+              {post.sharedPost.content && (
+                <p className="text-sm whitespace-pre-wrap break-words mb-2">{post.sharedPost.content}</p>
+              )}
+              {post.sharedPost.image && (
+                <img src={post.sharedPost.image} alt="Shared post" className="w-full max-h-60 object-cover rounded-md" />
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-4 pt-2 border-t">
           <Button
             variant="ghost"
@@ -298,35 +388,82 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
               </DialogHeader>
               <div className="space-y-4 max-h-80 overflow-y-auto">
                 {comments.length > 0 ? (
-                  comments.map((c) => (
-                    <div key={c._id} className="p-3 bg-muted rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <Avatar className="h-6 w-6">
-                          {c.author.avatar ? (
-                            <AvatarImage src={c.author.avatar || "/placeholder.svg"} alt={c.author.name} />
-                          ) : null}
-                          <AvatarFallback>{c.author.name[0]}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <strong className="text-sm">{c.author.name}</strong>
-                          <p className="text-sm mt-1">{c.content}</p>
+                  <>
+                    {comments
+                      .filter((c) => !c.parentCommentId)
+                      .map((c) => (
+                        <div key={c._id}>
+                          <div className="p-3 bg-muted rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <Avatar className="h-6 w-6">
+                                {c.author.avatar ? (
+                                  <AvatarImage src={c.author.avatar || "/placeholder.svg"} alt={c.author.name} />
+                                ) : null}
+                                <AvatarFallback>{c.author.name[0]}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-1">
+                                  <strong className="text-sm">{c.author.name}</strong>
+                                  {c.author.username && <span className="text-xs text-muted-foreground">@{c.author.username}</span>}
+                                </div>
+                                <p className="text-sm mt-1">{renderMentions(c.content)}</p>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground mt-1"
+                                  onClick={() => setReplyingTo(c)}
+                                >
+                                  Responder
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                          {/* Replies */}
+                          {comments
+                            .filter((r) => r.parentCommentId === c._id)
+                            .map((reply) => (
+                              <div key={reply._id} className="ml-8 mt-1 p-3 bg-muted/50 rounded-lg border-l-2 border-primary/30">
+                                <div className="flex items-start gap-2">
+                                  <Avatar className="h-5 w-5">
+                                    {reply.author.avatar ? (
+                                      <AvatarImage src={reply.author.avatar || "/placeholder.svg"} alt={reply.author.name} />
+                                    ) : null}
+                                    <AvatarFallback className="text-[10px]">{reply.author.name[0]}</AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-1">
+                                      <strong className="text-xs">{reply.author.name}</strong>
+                                      {reply.author.username && <span className="text-xs text-muted-foreground">@{reply.author.username}</span>}
+                                    </div>
+                                    <p className="text-xs mt-1">{renderMentions(reply.content)}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                         </div>
-                      </div>
-                    </div>
-                  ))
+                      ))}
+                  </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Nenhum comentário ainda seja o primeiro a comentar.</p>
                 )}
               </div>
               <div className="space-y-2">
+                {replyingTo && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+                    <span>Respondendo a <strong>{replyingTo.author.name}</strong></span>
+                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0 ml-auto" onClick={() => setReplyingTo(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
                 <Textarea
-                  placeholder="Escreva seu comentário..."
+                  placeholder={replyingTo ? `Responder a ${replyingTo.author.name}...` : "Escreva seu comentário..."}
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   rows={3}
                 />
                 <Button onClick={handleComment} disabled={!comment.trim() || isCommenting} className="w-full">
-                  {isCommenting ? "Enviando..." : "Enviar Comentário"}
+                  {isCommenting ? "Enviando..." : replyingTo ? "Enviar Resposta" : "Enviar Comentário"}
                   <Send className="ml-2 h-4 w-4" />
                 </Button>
               </div>
@@ -337,26 +474,41 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-green-600">
                 <Share className="h-4 w-4" />
-                Partilhar
+                {shareCount > 0 ? shareCount : "Partilhar"}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Compartilhar post</DialogTitle>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
-                <Button variant="outline" onClick={() => handleShare("copy")}>
-                  Copiar Link
+              <div className="space-y-4">
+                <Textarea
+                  placeholder="Adicione um comentário ao compartilhar (opcional)..."
+                  value={shareText}
+                  onChange={(e) => setShareText(e.target.value)}
+                  rows={3}
+                />
+                <Button onClick={handleInternalShare} disabled={isSharing} className="w-full">
+                  {isSharing ? "Compartilhando..." : "Compartilhar no Feed"}
+                  <Share className="ml-2 h-4 w-4" />
                 </Button>
-                <Button variant="outline" onClick={() => handleShare("whatsapp")}>
-                  WhatsApp
-                </Button>
-                <Button variant="outline" onClick={() => handleShare("twitter")}>
-                  Twitter
-                </Button>
-                <Button variant="outline" onClick={() => handleShare("facebook")}>
-                  Facebook
-                </Button>
+                <div className="pt-2 border-t">
+                  <p className="text-sm text-muted-foreground mb-2">Ou compartilhar externamente:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleShare("copy")}>
+                      Copiar Link
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleShare("whatsapp")}>
+                      WhatsApp
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleShare("twitter")}>
+                      Twitter
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleShare("facebook")}>
+                      Facebook
+                    </Button>
+                  </div>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -365,7 +517,7 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
       
       {/* Modal da Foto de Perfil */}
       <Dialog open={showProfileModal} onOpenChange={setShowProfileModal}>
-        <DialogContent className="max-w-md mx-auto bg-white rounded-lg">
+        <DialogContent className="max-w-md mx-auto rounded-lg">
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               {post.author.name}
@@ -386,17 +538,17 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
                 <img 
                   src={post.author.avatar} 
                   alt={post.author.name}
-                  className="w-48 h-48 rounded-full object-cover border-4 border-gray-200"
+                  className="w-48 h-48 rounded-full object-cover border-4 border-border"
                 />
               ) : (
-                <div className="w-48 h-48 rounded-full bg-blue-600 flex items-center justify-center text-white text-6xl font-bold border-4 border-gray-200">
+                <div className="w-48 h-48 rounded-full bg-blue-600 flex items-center justify-center text-white text-6xl font-bold border-4 border-border">
                   {getInitials(post.author.name)}
                 </div>
               )}
             </div>
             <div className="text-center">
-              <h3 className="text-xl font-semibold text-gray-900">{post.author.name}</h3>
-              <p className="text-gray-600">@{post.author.email}</p>
+              <h3 className="text-xl font-semibold text-foreground">{post.author.name}</h3>
+              <p className="text-muted-foreground">@{post.author.email}</p>
             </div>
             <Link 
               href={`/profile/${post.author._id}`}
@@ -418,7 +570,7 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
             <DialogTitle>Excluir post</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               Tem certeza de que deseja excluir este post? Esta ação não pode ser desfeita.
             </p>
             <div className="flex gap-3 justify-end">

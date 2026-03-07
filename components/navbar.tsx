@@ -76,7 +76,7 @@ export function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full bg-white border-b border-gray-200 shadow-sm">
+      <header className="sticky top-0 z-40 w-full bg-background border-b border-border shadow-sm">
         <div className="container mx-auto h-16 flex items-center justify-between px-4 md:px-6">
           <Link href="/feed" className="flex items-center gap-3 font-bold text-xl">
             <img src="/soocializenow.png" alt="SocializeNow Logo" className="h-10 w-10 rounded-full object-cover" />
@@ -89,8 +89,8 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-blue-600 ${
-                  pathname === item.href ? "text-blue-600" : "text-gray-600"
+                className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                  pathname === item.href ? "text-primary" : "text-muted-foreground"
                 }`}
               >
                 <item.icon className="h-5 w-5" />
@@ -129,8 +129,8 @@ export function Navbar() {
                 <nav className="flex flex-col gap-4 pt-6">
                   <Link
                     href="/messages"
-                    className={`flex items-center gap-3 text-lg font-medium transition-colors hover:text-blue-600 ${
-                      pathname === "/messages" ? "text-blue-600" : "text-gray-600"
+                    className={`flex items-center gap-3 text-lg font-medium transition-colors hover:text-primary ${
+                      pathname === "/messages" ? "text-primary" : "text-muted-foreground"
                     }`}
                   >
                     <MessageSquare className="h-6 w-6" />
@@ -139,7 +139,7 @@ export function Navbar() {
                   <Button
                     variant="ghost"
                     onClick={handleLogout}
-                    className="justify-start gap-3 text-lg font-medium text-gray-600 hover:text-red-600"
+                    className="justify-start gap-3 text-lg font-medium text-muted-foreground hover:text-destructive"
                   >
                     Sair
                   </Button>
@@ -150,15 +150,15 @@ export function Navbar() {
         </div>
       </header>
 
-      {/* Bottom Navigation for Mobile */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg md:hidden z-50">
+      {/* Bottom Navigation for Mobile - hidden on messages page */}
+      <div className={`fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg md:hidden z-50 ${pathname === "/messages" ? "hidden" : ""}`}>
         <nav className="flex justify-around h-12 items-center px-2">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={`flex flex-col items-center justify-center text-xs font-medium transition-colors p-1 ${
-                pathname === item.href ? "text-blue-600" : "text-gray-600 hover:text-blue-600"
+                pathname === item.href ? "text-primary" : "text-muted-foreground hover:text-primary"
               }`}
             >
               <item.icon className="h-4 w-4" />

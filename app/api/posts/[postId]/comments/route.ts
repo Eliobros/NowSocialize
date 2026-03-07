@@ -58,8 +58,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           $project: {
             content: 1,
             createdAt: 1,
+            parentCommentId: 1,
             "author._id": 1,
             "author.name": 1,
+            "author.username": 1,
             "author.avatar": 1,
           },
         },
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const { content } = await request.json()
+    const { content, parentCommentId } = await request.json()
 
     if (!content || content.trim().length === 0) {
       return NextResponse.json({ error: "Conteúdo do comentário é obrigatório" }, { status: 400 })
@@ -114,11 +116,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Criar comentário
-    const comment = {
+    const comment: any = {
       postId: new ObjectId(postId),
       authorId: new ObjectId(user.userId),
       content: content.trim(),
       createdAt: new Date(),
+    }
+
+    if (parentCommentId && ObjectId.isValid(parentCommentId)) {
+      comment.parentCommentId = new ObjectId(parentCommentId)
     }
 
     const result = await comments.insertOne(comment)
@@ -137,6 +143,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         read: false,
         createdAt: new Date(),
       })
+    }
+
+    // Parse @mentions from content
+    const mentionRegex = /@(\w+)/g
+    let match
+    while ((match = mentionRegex.exec(content)) !== null) {
+      const mentionedUsername = match[1]
+      const mentionedUser = await users.findOne({ username: mentionedUsername })
+      if (mentionedUser && mentionedUser._id.toString() !== user.userId) {
+        await notifications.insertOne({
+          userId: mentionedUser._id,
+          fromUserId: new ObjectId(user.userId),
+          type: "mention",
+          message: `${currentUser.name} mencionou você em um comentário`,
+          postId: new ObjectId(postId),
+          targetUrl: `/post/${postId}`,
+          read: false,
+          createdAt: new Date(),
+        })
+      }
+    }
+
+    // If replying to a comment, notify the parent comment author
+    if (parentCommentId && ObjectId.isValid(parentCommentId)) {
+      const parentComment = await comments.findOne({ _id: new ObjectId(parentCommentId) })
+      if (parentComment && parentComment.authorId.toString() !== user.userId) {
+        await notifications.insertOne({
+          userId: parentComment.authorId,
+          fromUserId: new ObjectId(user.userId),
+          type: "comment",
+          message: `${currentUser.name} respondeu ao seu comentário`,
+          postId: new ObjectId(postId),
+          targetUrl: `/post/${postId}`,
+          read: false,
+          createdAt: new Date(),
+        })
+      }
     }
 
     return NextResponse.json({

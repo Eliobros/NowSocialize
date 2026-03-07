@@ -1,26 +1,67 @@
 "use client"
 
-import React, { useState, useRef } from "react"
+import React, { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Camera, Mic, Send, X, Loader2, Smile, ImageIcon } from "lucide-react"
+import { Camera, Send, X, Loader2, Smile } from "lucide-react"
 
 interface MessageInputProps {
   onSendMessage: (content: string, image?: File) => Promise<boolean>
   disabled?: boolean
   placeholder?: string
+  replyingTo?: {
+    _id: string
+    content: string
+    sender: { _id: string; name: string }
+  } | null
+  onCancelReply?: () => void
+  onTypingStart?: () => void
+  onTypingStop?: () => void
 }
 
 export function MessageInput({
   onSendMessage,
   disabled = false,
-  placeholder = "Digite sua mensagem..."
+  placeholder = "Digite sua mensagem...",
+  replyingTo,
+  onCancelReply,
+  onTypingStart,
+  onTypingStop
 }: MessageInputProps) {
   const [message, setMessage] = useState("")
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isTypingRef = useRef(false)
+
+  const handleTyping = useCallback(() => {
+    if (!isTypingRef.current) {
+      isTypingRef.current = true
+      onTypingStart?.()
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false
+      onTypingStop?.()
+    }, 2000)
+  }, [onTypingStart, onTypingStop])
+
+  const handleMessageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessage(e.target.value)
+    if (e.target.value.trim()) {
+      handleTyping()
+    } else if (isTypingRef.current) {
+      isTypingRef.current = false
+      onTypingStop?.()
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }
 
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -62,6 +103,13 @@ export function MessageInput({
       if (success) {
         setMessage("")
         removeImage()
+        if (isTypingRef.current) {
+          isTypingRef.current = false
+          onTypingStop?.()
+        }
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current)
+        }
       }
     } finally {
       setSending(false)
@@ -69,21 +117,20 @@ export function MessageInput({
   }
 
   return (
-    <div className="border-t bg-white p-4 flex-shrink-0">
-      {/* Image Preview */}
+    <div className="border-t border-border bg-card px-3 py-2.5 flex-shrink-0 relative z-10">
       {imagePreview && (
         <div className="mb-2">
           <div className="relative inline-block">
             <img
               src={imagePreview}
               alt="Preview"
-              className="max-h-20 rounded-lg"
+              className="max-h-20 rounded-lg border border-border"
             />
             <Button
               type="button"
               variant="destructive"
               size="sm"
-              className="absolute -top-2 -right-2 h-6 w-6 p-0"
+              className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full"
               onClick={removeImage}
             >
               <X className="h-3 w-3" />
@@ -92,8 +139,25 @@ export function MessageInput({
         </div>
       )}
 
+      {replyingTo && (
+        <div className="mb-2 flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 border-l-2 border-primary">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-primary">{replyingTo.sender.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{replyingTo.content}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 rounded-full flex-shrink-0"
+            onClick={onCancelReply}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -102,35 +166,33 @@ export function MessageInput({
           className="hidden"
         />
 
-        {/* Image button */}
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="p-2"
+          className="h-9 w-9 p-0 rounded-full flex-shrink-0 text-muted-foreground hover:text-foreground"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
         >
-          <Camera className="h-5 w-5 text-gray-500" />
+          <Camera className="h-5 w-5" />
         </Button>
 
-        {/* Message input */}
         <div className="flex-1 relative">
           <Input
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={handleMessageChange}
             placeholder={placeholder}
-            className="pr-10"
+            className="pr-10 rounded-full bg-muted/50 border-0 focus-visible:ring-1"
             disabled={disabled || sending}
           />
-          <Smile className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <Smile className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         </div>
 
-        {/* Send button */}
         <Button
           type="submit"
           disabled={sending || disabled || (!message.trim() && !selectedImage)}
-          className="rounded-full w-10 h-10 p-0 bg-blue-500 hover:bg-blue-600"
+          size="sm"
+          className="rounded-full h-9 w-9 p-0 flex-shrink-0"
         >
           {sending ? (
             <Loader2 className="h-4 w-4 animate-spin" />

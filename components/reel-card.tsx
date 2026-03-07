@@ -37,7 +37,12 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
   const [liked, setLiked] = useState(reel.likedByUser)
   const [likeCount, setLikeCount] = useState(reel.likes || 0)
   const [isLiking, setIsLiking] = useState(false)
-  const [isMuted, setIsMuted] = useState(true)
+  const [isMuted, setIsMuted] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("reels_muted") !== "false"
+    }
+    return true
+  })
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [showCommentsModal, setShowCommentsModal] = useState(false)
@@ -49,9 +54,22 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
     if (!video) return
 
     if (isActive && isPlaying) {
-      video.play().catch(console.error)
+      video.muted = isMuted
+      video.play().catch(() => {
+        // Browser bloqueou autoplay com som — fallback pra muted
+        if (!video.muted) {
+          video.muted = true
+          setIsMuted(true)
+          video.play().catch(console.error)
+        }
+      })
     } else {
       video.pause()
+    }
+
+    // Auto-play quando fica ativo
+    if (isActive && !isPlaying) {
+      setIsPlaying(true)
     }
 
     // Cleanup quando não é mais ativo
@@ -133,6 +151,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
       const newMutedState = !isMuted
       videoRef.current.muted = newMutedState
       setIsMuted(newMutedState)
+      localStorage.setItem("reels_muted", String(newMutedState))
     }
   }
 

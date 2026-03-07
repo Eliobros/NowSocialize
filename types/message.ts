@@ -27,6 +27,14 @@ export interface Message {
   }
   conversationId?: string
   groupId?: string
+  replyTo?: {
+    _id: string
+    content: string
+    sender: {
+      _id: string
+      name: string
+    }
+  }
   createdAt: string
   read: boolean
   readBy?: string[] // Para mensagens de grupo

@@ -57,7 +57,8 @@ export function useMessages() {
   const sendMessage = useCallback(async (
     conversationId: string,
     content: string,
-    image?: File
+    image?: File,
+    replyToId?: string
   ) => {
     try {
       const token = localStorage.getItem("token")
@@ -67,6 +68,7 @@ export function useMessages() {
         formData.append("conversationId", conversationId)
         formData.append("content", content)
         formData.append("image", image)
+        if (replyToId) formData.append("replyToId", replyToId)
 
         const response = await fetch("/api/messages", {
           method: "POST",
@@ -84,7 +86,8 @@ export function useMessages() {
           },
           body: JSON.stringify({
             conversationId,
-            content
+            content,
+            replyToId
           })
         })
 

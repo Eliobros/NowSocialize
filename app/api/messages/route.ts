@@ -32,12 +32,14 @@ export async function POST(request: NextRequest) {
     let conversationId: string
     let content: string
     let imageUrl: string | null = null
+    let replyToId: string | null = null
 
     // Processar FormData (com imagem) ou JSON (só texto)
     if (contentType?.includes("multipart/form-data")) {
       const formData = await request.formData()
       conversationId = formData.get("conversationId") as string
       content = (formData.get("content") as string) || ""
+      replyToId = formData.get("replyToId") as string
       const image = formData.get("image") as File
 
       if (!conversationId) {
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest) {
       const body = await request.json()
       conversationId = body.conversationId
       content = body.content
+      replyToId = body.replyToId
 
       if (!conversationId || !content) {
         return NextResponse.json({ error: "ID da conversa e conteúdo são obrigatórios" }, { status: 400 })
@@ -124,6 +127,10 @@ export async function POST(request: NextRequest) {
 
     if (imageUrl) {
       messageData.image = imageUrl
+    }
+
+    if (replyToId && ObjectId.isValid(replyToId)) {
+      messageData.replyToId = new ObjectId(replyToId)
     }
 
     // Inserir mensagem
