@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { CheckCircle, Shield, HelpCircle, Loader2, Upload, Trash2, UserX, AlertTriangle, Ban } from "lucide-react"
+import { CheckCircle, Shield, HelpCircle, Loader2, Upload, Trash2, UserX, AlertTriangle, Ban, Languages } from "lucide-react"
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)
@@ -50,6 +50,8 @@ export default function SettingsPage() {
     deletionDate: null as string | null,
     daysRemaining: 0
   })
+  const [preferredLanguage, setPreferredLanguage] = useState("")
+  const [savingLanguage, setSavingLanguage] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem("token")
@@ -72,6 +74,7 @@ export default function SettingsPage() {
       if (response.ok) {
         const data = await response.json()
         setUser(data.profile)
+        setPreferredLanguage(data.profile.preferredLanguage || "")
         setVerifyForm((prev) => ({
           ...prev,
           fullName: data.profile.name,
@@ -259,6 +262,38 @@ export default function SettingsPage() {
     }
   }
 
+  const handleSaveLanguage = async () => {
+    setSavingLanguage(true)
+    setError("")
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: user.name,
+          username: user.username,
+          bio: user.bio,
+          avatar: user.avatar,
+          preferredLanguage
+        }),
+      })
+      if (response.ok) {
+        setSuccess("Idioma preferido salvo com sucesso!")
+      } else {
+        const data = await response.json()
+        setError(data.error || "Erro ao salvar idioma")
+      }
+    } catch (error) {
+      setError("Erro de conexão")
+    } finally {
+      setSavingLanguage(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -273,8 +308,8 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <h1 className="text-3xl font-bold mb-8">Configurações</h1>
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-4xl">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-8">Configurações</h1>
 
         {error && (
           <Alert variant="destructive" className="mb-6">
@@ -288,19 +323,23 @@ export default function SettingsPage() {
           </Alert>
         )}
 
-        <Tabs defaultValue="verification" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="verification" className="gap-2">
-              <Shield className="h-4 w-4" />
-              Verificação
+        <Tabs defaultValue="verification" className="space-y-4 sm:space-y-6">
+          <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
+            <TabsTrigger value="verification" className="gap-1.5 text-xs sm:text-sm flex-1 min-w-0">
+              <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+              <span className="truncate">Verificação</span>
             </TabsTrigger>
-            <TabsTrigger value="support" className="gap-2">
-              <HelpCircle className="h-4 w-4" />
-              Suporte
+            <TabsTrigger value="language" className="gap-1.5 text-xs sm:text-sm flex-1 min-w-0">
+              <Languages className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+              <span className="truncate">Idioma</span>
             </TabsTrigger>
-            <TabsTrigger value="account" className="gap-2">
-              <UserX className="h-4 w-4" />
-              Gerenciar Conta
+            <TabsTrigger value="support" className="gap-1.5 text-xs sm:text-sm flex-1 min-w-0">
+              <HelpCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+              <span className="truncate">Suporte</span>
+            </TabsTrigger>
+            <TabsTrigger value="account" className="gap-1.5 text-xs sm:text-sm flex-1 min-w-0">
+              <UserX className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+              <span className="truncate">Conta</span>
             </TabsTrigger>
           </TabsList>
 
@@ -322,7 +361,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="bg-blue-50 p-6 rounded-lg">
+                    <div className="bg-blue-50 p-4 sm:p-6 rounded-lg">
                       <h3 className="text-lg font-semibold mb-2">🌟 Mostre que seu perfil é verificado!</h3>
                       <p className="text-gray-700 mb-4">
                         Obtenha o selo de verificação oficial do SocializeNow e mostre para todos que seu perfil é
@@ -342,12 +381,12 @@ export default function SettingsPage() {
                           Solicitar Selo de Verificação
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
+                      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle>Solicitação de Selo de Verificação</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleVerifySubmit} className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <Label htmlFor="fullName">Nome Completo</Label>
                               <Input
@@ -369,7 +408,7 @@ export default function SettingsPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <Label>Documento (Frente)</Label>
                               <div className="mt-2">
@@ -445,6 +484,66 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="language">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Languages className="h-5 w-5" />
+                    Tradução Automática
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="bg-blue-50 p-4 sm:p-6 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-2">🌍 Tradução em Tempo Real</h3>
+                    <p className="text-gray-700 mb-4">
+                      Receba mensagens traduzidas automaticamente no seu idioma preferido.
+                      As mensagens de outros idiomas serão traduzidas em tempo real!
+                    </p>
+                    <ul className="text-sm text-gray-600 space-y-1 mb-4">
+                      <li>• Tradução automática de mensagens recebidas</li>
+                      <li>• Botão para ver o idioma original</li>
+                      <li>• Também pode alterar no ícone 🌐 dentro do chat</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="preferredLanguage">Idioma Preferido</Label>
+                      <select
+                        id="preferredLanguage"
+                        value={preferredLanguage}
+                        onChange={(e) => setPreferredLanguage(e.target.value)}
+                        className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        <option value="">Selecione um idioma</option>
+                        <option value="pt">Português</option>
+                        <option value="en">Inglês</option>
+                        <option value="es">Espanhol</option>
+                        <option value="fr">Francês</option>
+                        <option value="de">Alemão</option>
+                        <option value="it">Italiano</option>
+                        <option value="ja">Japonês</option>
+                        <option value="ko">Coreano</option>
+                        <option value="zh">Chinês</option>
+                        <option value="ar">Árabe</option>
+                        <option value="ru">Russo</option>
+                        <option value="hi">Hindi</option>
+                        <option value="tr">Turco</option>
+                        <option value="nl">Holandês</option>
+                        <option value="pl">Polonês</option>
+                        <option value="sv">Sueco</option>
+                      </select>
+                    </div>
+
+                    <Button onClick={handleSaveLanguage} disabled={savingLanguage} className="w-full">
+                      {savingLanguage && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Salvar Idioma Preferido
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
           <TabsContent value="support">
             <Card>
               <CardHeader>
@@ -454,7 +553,7 @@ export default function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="bg-gray-50 p-6 rounded-lg">
+                <div className="bg-gray-50 p-4 sm:p-6 rounded-lg">
                   <h3 className="text-lg font-semibold mb-2">Precisa de ajuda?</h3>
                   <p className="text-gray-700 mb-4">
                     Nossa equipe está aqui para ajudar! Abra um ticket de suporte e entraremos em contato o mais breve
@@ -560,7 +659,7 @@ export default function SettingsPage() {
                 )}
 
                 {/* Desativar conta */}
-                <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
+                <div className="bg-yellow-50 p-4 sm:p-6 rounded-lg border border-yellow-200">
                   <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                     <UserX className="h-5 w-5 text-yellow-600" />
                     Desativar Conta
@@ -610,7 +709,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Excluir conta */}
-                <div className="bg-red-50 p-6 rounded-lg border border-red-200">
+                <div className="bg-red-50 p-4 sm:p-6 rounded-lg border border-red-200">
                   <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                     <Trash2 className="h-5 w-5 text-red-600" />
                     Excluir Conta Permanentemente

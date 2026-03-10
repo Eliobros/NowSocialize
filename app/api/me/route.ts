@@ -46,10 +46,13 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
+      _id: user._id.toString(),
       name: user.name,
       email: user.email,
       username: user.username,
       userEmailVerified: user.userEmailVerified ?? false,
+      isVerified: (user as any).isVerified ?? false,
+      preferredLanguage: (user as any).preferredLanguage || "",
     })
   } catch (error) {
     console.error("Erro ao buscar usuário no MongoDB:", error)

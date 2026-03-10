@@ -24,9 +24,38 @@ const connectToMongo = async () => {
 connectToMongo()
 
 app.prepare().then(() => {
-  const server = createServer((req, res) => {
+  // ==================== TRADUÇÃO ====================
+  const server = createServer(async (req, res) => {
+    if (req.method === "POST" && req.url === "/api/translate") {
+      let body = ""
+      req.on("data", chunk => body += chunk)
+      req.on("end", async () => {
+        try {
+          const { text, target } = JSON.parse(body)
+
+          const response = await fetch("http://localhost:5000/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ q: text, source: "auto", target: target || "pt" })
+          })
+
+          const data = await response.json()
+
+          res.writeHead(200, {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          })
+          res.end(JSON.stringify({ translatedText: data.translatedText, detectedLanguage: data.detectedLanguage }))
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: err.message }))
+        }
+      })
+      return
+    }
     handle(req, res)
   })
+  // =================================================
 
   const io = new Server(server, {
     cors: {
@@ -41,15 +70,15 @@ app.prepare().then(() => {
   // Function to update user online status
   const updateUserOnlineStatus = async (userId, isOnline) => {
     if (!db) return
-    
+
     try {
       const now = new Date()
-      
+
       await db.collection("users").updateOne(
         { _id: new ObjectId(userId) },
         { $set: { isOnline, lastSeen: now.toISOString() } }
       )
-      
+
       // Broadcast online status to all connected users
       io.emit("user-status-changed", {
         userId,
@@ -70,7 +99,7 @@ app.prepare().then(() => {
       socket.userId = userId
       activeUsers.set(userId, socket.id)
       console.log(`User ${userId} joined room`)
-      
+
       // Update user as online
       await updateUserOnlineStatus(userId, true)
     })
@@ -137,61 +166,85 @@ app.prepare().then(() => {
       }
     })
 
-     // ✨ ADICIONA AQUI ✨
-// ==================== MENSAGENS EM TEMPO REAL ====================
+    // ==================== MENSAGENS EM TEMPO REAL ====================
 
-// Entrar em conversa
-socket.on("join_conversation", (conversationId) => {
-  socket.join(conversationId)
-  console.log(`User ${socket.userId} joined conversation ${conversationId}`)
-})
-
-// Sair de conversa
-socket.on("leave_conversation", (conversationId) => {
-  socket.leave(conversationId)
-  console.log(`User ${socket.userId} left conversation ${conversationId}`)
-})
-
-// Typing indicator
-socket.on("typing_start", (data) => {
-  const { conversationId } = data
-  if (conversationId && socket.userId) {
-    socket.to(conversationId).emit("user_typing", {
-      userId: socket.userId,
-      conversationId,
+    // Entrar em conversa
+    socket.on("join_conversation", (conversationId) => {
+      socket.join(conversationId)
+      console.log(`User ${socket.userId} joined conversation ${conversationId}`)
     })
-  }
-})
 
-socket.on("typing_stop", (data) => {
-  const { conversationId } = data
-  if (conversationId && socket.userId) {
-    socket.to(conversationId).emit("user_stop_typing", {
-      userId: socket.userId,
-      conversationId,
+    // Sair de conversa
+    socket.on("leave_conversation", (conversationId) => {
+      socket.leave(conversationId)
+      console.log(`User ${socket.userId} left conversation ${conversationId}`)
     })
-  }
-})
 
-// Enviar mensagem (opcional - pode usar só via API)
-socket.on("send_message", async (data) => {
-  const { conversationId, content, image } = data
-  
-  // Emite pra todos na conversa
-  io.to(conversationId).emit("new_message", {
-    ...data,
-    createdAt: new Date().toISOString(),
-  })
-  
-  console.log(`Message sent to conversation ${conversationId}`)
-})
+    // Typing indicator
+    socket.on("typing_start", (data) => {
+      const { conversationId } = data
+      if (conversationId && socket.userId) {
+        socket.to(conversationId).emit("user_typing", {
+          userId: socket.userId,
+          conversationId,
+        })
+      }
+    })
 
-// ================================================================
+    socket.on("typing_stop", (data) => {
+      const { conversationId } = data
+      if (conversationId && socket.userId) {
+        socket.to(conversationId).emit("user_stop_typing", {
+          userId: socket.userId,
+          conversationId,
+        })
+      }
+    })
 
+    // Enviar mensagem (opcional - pode usar só via API)
+    socket.on("send_message", async (data) => {
+      const { conversationId, content, image } = data
+
+      // Emite pra todos na conversa
+      io.to(conversationId).emit("new_message", {
+        ...data,
+        createdAt: new Date().toISOString(),
+      })
+
+      console.log(`Message sent to conversation ${conversationId}`)
+    })
+
+    // ==================== CONFIRMAÇÃO DE LEITURA ====================
+    socket.on("mark_read", async (data) => {
+      const { conversationId, userId } = data
+      if (conversationId && userId) {
+        socket.to(conversationId).emit("messages_read", {
+          conversationId,
+          userId,
+          readAt: new Date().toISOString(),
+        })
+        console.log(`Messages marked as read by ${userId} in ${conversationId}`)
+      }
+    })
+
+    // ==================== REAÇÕES DE MENSAGENS ====================
+    socket.on("message_reaction", async (data) => {
+      const { conversationId, messageId, emoji, userId, action } = data
+      if (conversationId && messageId) {
+        io.to(conversationId).emit("reaction_updated", {
+          conversationId,
+          messageId,
+          emoji,
+          userId,
+          action, // 'add' or 'remove'
+        })
+        console.log(`Reaction ${action}: ${emoji} on message ${messageId}`)
+      }
+    })
 
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id)
-      
+
       // Remove from active users and mark as offline
       for (const [userId, socketId] of activeUsers.entries()) {
         if (socketId === socket.id) {
@@ -207,9 +260,10 @@ socket.on("send_message", async (data) => {
   server.listen(PORT, (err) => {
     if (err) throw err
     const { networkInterfaces } = require('os')
-const nets = networkInterfaces()
-const ip = Object.values(nets).flat().find(n => n.family === 'IPv4' && !n.internal)?.address || 'localhost'
-console.log(`> Ready on http://${ip}:${PORT}`)
+    const nets = networkInterfaces()
+    const ip = Object.values(nets).flat().find(n => n.family === 'IPv4' && !n.internal)?.address || 'localhost'
+    console.log(`> Ready on http://${ip}:${PORT}`)
     console.log(`> Socket.IO server running`)
   })
 })
+

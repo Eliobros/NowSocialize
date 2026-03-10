@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       followers: userProfile.followers || 0,
       following: userProfile.following || 0,
       isVerified: userProfile.isVerified || false,
+      preferredLanguage: userProfile.preferredLanguage || "",
       postsCount,
     }
 
@@ -66,7 +67,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const { name, username, bio, avatar } = await request.json()
+    const { name, username, bio, avatar, preferredLanguage } = await request.json()
 
     if (!name) {
       return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 })
@@ -91,6 +92,7 @@ export async function PUT(request: NextRequest) {
       name,
       bio: bio || "",
       avatar: avatar || "",
+      preferredLanguage: preferredLanguage || "",
       updatedAt: new Date(),
     }
 

@@ -126,6 +126,46 @@ export function useMessages() {
     setMessages(prev => [...prev, message])
   }, [])
 
+  const markConversationRead = useCallback(async (conversationId: string) => {
+    try {
+      const token = localStorage.getItem("token")
+      await fetch(`/api/messages/${conversationId}/read`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    } catch (err) {
+      console.error("Mark read error:", err)
+    }
+  }, [])
+
+  const toggleReaction = useCallback(async (conversationId: string, messageId: string, emoji: string) => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/messages/${conversationId}/reactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ messageId, emoji })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        return data
+      }
+      return null
+    } catch (err) {
+      console.error("Toggle reaction error:", err)
+      return null
+    }
+  }, [])
+
+  const updateMessageReactions = useCallback((messageId: string, reactions: any[]) => {
+    setMessages(prev => prev.map(msg => 
+      msg._id === messageId ? { ...msg, reactions } : msg
+    ))
+  }, [])
+
   const updateConversations = useCallback((updatedConversation: Conversation) => {
     setConversations(prev => {
       const exists = prev.find(c => c._id === updatedConversation._id)
@@ -149,6 +189,9 @@ export function useMessages() {
     startNewConversation,
     addMessage,
     updateConversations,
+    markConversationRead,
+    toggleReaction,
+    updateMessageReactions,
     setMessages,
     setConversations
   }

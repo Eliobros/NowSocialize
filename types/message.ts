@@ -7,6 +7,8 @@ export interface User {
   avatar: string
   lastSeen?: string
   isOnline?: boolean
+  isVerified?: boolean
+  preferredLanguage?: string
 }
 
 export interface Message {
@@ -35,6 +37,10 @@ export interface Message {
       name: string
     }
   }
+  reactions?: { userId: string; emoji: string; createdAt: string }[]
+  translatedContent?: string
+  originalLanguage?: string
+  readAt?: string
   createdAt: string
   read: boolean
   readBy?: string[] // Para mensagens de grupo
@@ -49,6 +55,7 @@ export interface Conversation {
     avatar: string
     lastSeen?: string
     isOnline?: boolean
+    isVerified?: boolean
   }>
   lastMessage: {
     content: string

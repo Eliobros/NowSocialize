@@ -333,6 +333,15 @@ export default function ProfilePage() {
                       <Award className="h-5 w-5" />
                       Verificado
                     </Button>
+                    
+                    <Button
+                      variant="ghost"
+                      className="justify-start gap-3 text-gray-600 hover:text-gray-700"
+                      onClick={() => router.push("/settings")}
+                    >
+                      <Settings className="h-5 w-5" />
+                      Configurações
+                    </Button>
                   </div>
                 </SheetContent>
               </Sheet>

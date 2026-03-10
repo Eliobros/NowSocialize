@@ -104,6 +104,7 @@ export async function GET(
             type: 1,
             duration: 1,
             read: 1,
+            reactions: 1,
             createdAt: 1,
             "sender._id": 1,
             "sender.name": 1,

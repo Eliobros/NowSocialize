@@ -19,6 +19,8 @@ interface UseSocketOptions {
   onRemovedFromGroup?: (data: any) => void
   onPromotedToAdmin?: (data: any) => void
   onDemotedFromAdmin?: (data: any) => void
+  onMessagesRead?: (data: { conversationId: string; userId: string; readAt: string }) => void
+  onReactionUpdated?: (data: { conversationId: string; messageId: string; emoji: string; userId: string; action: string }) => void
 }
 
 export function useSocket(options: UseSocketOptions) {
@@ -126,6 +128,13 @@ export function useSocket(options: UseSocketOptions) {
       socket.on('demoted_from_admin', options.onDemotedFromAdmin)
     }
 
+    if (options.onMessagesRead) {
+      socket.on('messages_read', options.onMessagesRead)
+    }
+    if (options.onReactionUpdated) {
+      socket.on('reaction_updated', options.onReactionUpdated)
+    }
+
     // Keep-alive: enviar atividade a cada 30 segundos
     const keepAliveInterval = setInterval(() => {
       if (socket.connected) {
@@ -174,6 +183,18 @@ export function useSocket(options: UseSocketOptions) {
     }
   }
 
+  const markRead = (conversationId: string, userId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('mark_read', { conversationId, userId })
+    }
+  }
+
+  const sendReaction = (conversationId: string, messageId: string, emoji: string, userId: string, action: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('message_reaction', { conversationId, messageId, emoji, userId, action })
+    }
+  }
+
   return {
     socket: socketRef.current,
     isConnected,
@@ -182,6 +203,8 @@ export function useSocket(options: UseSocketOptions) {
     leaveConversation,
     startTyping,
     stopTyping,
-    emitEvent
+    emitEvent,
+    markRead,
+    sendReaction
   }
 }

@@ -17,7 +17,7 @@ import { ChatWindow } from "@/components/messages/ChatWindow"
 import { MessageInput } from "@/components/messages/MessageInput"
 import { useSocket } from "@/hooks/use-socket"
 import { useMessages } from "@/hooks/use-messages"
-import { User } from "@/types/message"
+import { User, Message } from "@/types/message"
 
 export default function MessagesPage() {
   const router = useRouter()
@@ -37,6 +37,23 @@ export default function MessagesPage() {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [replyingTo, setReplyingTo] = useState<any>(null)
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map())
+  const [currentUserVerified, setCurrentUserVerified] = useState(false)
+  const [currentUserLanguage, setCurrentUserLanguage] = useState("")
+  const [tinaMessages, setTinaMessages] = useState<Message[]>([])
+  const [tinaLoading, setTinaLoading] = useState(false)
+
+  const TINA_ID = "tina-ia"
+  const TINA_SENDER = { _id: TINA_ID, name: "Tina IA", avatar: "/tina.png" }
+
+  const isTinaChat = selectedConversation === TINA_ID
+
+  // Refs to avoid stale closures in socket callbacks
+  const currentUserLanguageRef = React.useRef(currentUserLanguage)
+  const selectedConversationRef = React.useRef(selectedConversation)
+  const currentUserIdRef = React.useRef(currentUserId)
+  React.useEffect(() => { currentUserLanguageRef.current = currentUserLanguage }, [currentUserLanguage])
+  React.useEffect(() => { selectedConversationRef.current = selectedConversation }, [selectedConversation])
+  React.useEffect(() => { currentUserIdRef.current = currentUserId }, [currentUserId])
 
   const {
     conversations,
@@ -47,14 +64,71 @@ export default function MessagesPage() {
     sendMessage,
     startNewConversation,
     addMessage,
-    setMessages
+    setMessages,
+    markConversationRead,
+    toggleReaction,
+    updateMessageReactions
   } = useMessages()
 
-  const { isConnected, joinConversation, leaveConversation, startTyping, stopTyping } = useSocket({
+  const translateMessages = async (msgs: Message[], targetLang: string) => {
+    if (!targetLang) return msgs
+    
+    const translated = await Promise.all(
+      msgs.map(async (msg) => {
+        if (!msg.content || msg.sender._id === currentUserId || msg.translatedContent) return msg
+        try {
+          const response = await fetch("https://socket-socializenow.duckdns.org/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: msg.content, target: targetLang })
+          })
+          if (response.ok) {
+            const data = await response.json()
+            if (data.translatedText && data.translatedText !== msg.content) {
+              return {
+                ...msg,
+                translatedContent: data.translatedText,
+                originalLanguage: data.detectedLanguage?.language || "??"
+              }
+            }
+          }
+        } catch (err) {
+          // Translation failed, just show original
+        }
+        return msg
+      })
+    )
+    return translated
+  }
+
+  const { isConnected, joinConversation, leaveConversation, startTyping, stopTyping, markRead, sendReaction } = useSocket({
     userId: currentUserId,
     onNewMessage: (newMessage) => {
-      if (newMessage.conversationId === selectedConversation) {
-        addMessage(newMessage)
+      if (newMessage.conversationId === selectedConversationRef.current) {
+        const lang = currentUserLanguageRef.current
+        const myId = currentUserIdRef.current
+        if (lang && newMessage.sender?._id !== myId && newMessage.content) {
+          fetch("https://socket-socializenow.duckdns.org/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: newMessage.content, target: lang })
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (data.translatedText && data.translatedText !== newMessage.content) {
+                addMessage({
+                  ...newMessage,
+                  translatedContent: data.translatedText,
+                  originalLanguage: data.detectedLanguage?.language || "??"
+                })
+              } else {
+                addMessage(newMessage)
+              }
+            })
+            .catch(() => addMessage(newMessage))
+        } else {
+          addMessage(newMessage)
+        }
       }
       fetchConversations()
     },
@@ -62,7 +136,7 @@ export default function MessagesPage() {
       fetchConversations()
     },
     onUserTyping: ({ userId, conversationId }) => {
-      if (conversationId === selectedConversation) {
+      if (conversationId === selectedConversationRef.current) {
         setTypingUsers(prev => {
           const next = new Map(prev)
           // Find user name from conversation participants
@@ -74,7 +148,7 @@ export default function MessagesPage() {
       }
     },
     onUserStopTyping: ({ userId, conversationId }) => {
-      if (conversationId === selectedConversation) {
+      if (conversationId === selectedConversationRef.current) {
         setTypingUsers(prev => {
           const next = new Map(prev)
           next.delete(userId)
@@ -87,7 +161,29 @@ export default function MessagesPage() {
     },
     onAddedToGroup: ({ groupId, groupName }) => {
       fetchConversations()
-    }
+    },
+    onMessagesRead: ({ conversationId: convId, userId }) => {
+      if (convId === selectedConversationRef.current) {
+        setMessages(prev => prev.map(msg => 
+          msg.sender._id === currentUserIdRef.current ? { ...msg, read: true, readAt: new Date().toISOString() } : msg
+        ))
+      }
+    },
+    onReactionUpdated: ({ conversationId: convId, messageId, emoji, userId, action }) => {
+      if (convId === selectedConversationRef.current) {
+        setMessages(prev => prev.map(msg => {
+          if (msg._id !== messageId) return msg
+          let reactions = [...(msg.reactions || [])]
+          if (action === 'remove') {
+            reactions = reactions.filter(r => !(r.userId === userId && r.emoji === emoji))
+          } else {
+            reactions = reactions.filter(r => r.userId !== userId)
+            reactions.push({ userId, emoji, createdAt: new Date().toISOString() })
+          }
+          return { ...msg, reactions }
+        }))
+      }
+    },
   })
 
   useEffect(() => {
@@ -119,12 +215,15 @@ export default function MessagesPage() {
     const fetchCurrentUser = async () => {
       try {
         const token = localStorage.getItem("token")
+        // Fetch basic user data
         const response = await fetch("/api/me", {
           headers: { Authorization: `Bearer ${token}` }
         })
         if (response.ok) {
           const data = await response.json()
-          setCurrentUser({ _id: data._id, name: data.name, username: data.username || "", avatar: data.avatar || "" })
+          setCurrentUser({ _id: data._id || currentUserId, name: data.name, username: data.username || "", avatar: data.avatar || "" })
+          setCurrentUserVerified(data.isVerified || false)
+          setCurrentUserLanguage(data.preferredLanguage || "")
         }
       } catch (error) {
         console.error("Error fetching current user:", error)
@@ -142,22 +241,129 @@ export default function MessagesPage() {
     }
   }, [selectedConversation])
 
+  useEffect(() => {
+    if (!currentUserLanguage || messages.length === 0) return
+    
+    const needsTranslation = messages.some(
+      msg => msg.sender._id !== currentUserId && msg.content && !msg.translatedContent
+    )
+    
+    if (needsTranslation) {
+      translateMessages(messages, currentUserLanguage).then(translated => {
+        setMessages(translated)
+      })
+    }
+  }, [messages.length, currentUserLanguage])
+
+  const handleReaction = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return
+    const result = await toggleReaction(selectedConversation, messageId, emoji)
+    if (result) {
+      updateMessageReactions(messageId, result.reactions)
+      sendReaction(selectedConversation, messageId, emoji, currentUserId, result.action)
+    }
+  }
+
   const handleSelectConversation = async (conversationId: string) => {
     setTypingUsers(new Map())
     setSelectedConversation(conversationId)
+    if (conversationId === TINA_ID) {
+      // Load welcome message if no messages yet
+      if (tinaMessages.length === 0) {
+        setTinaMessages([{
+          _id: "tina-welcome",
+          content: "Olá! 👋 Sou a **Tina**, a inteligência artificial da SocializeNow.\n\nPosso te ajudar com dúvidas, ideias, conversas e muito mais. É só me perguntar! 🤖✨",
+          sender: TINA_SENDER,
+          createdAt: new Date().toISOString(),
+          read: true,
+        }])
+      }
+      return
+    }
     await fetchMessages(conversationId)
+    await markConversationRead(conversationId)
+    markRead(conversationId, currentUserId)
+    await fetchConversations()
   }
 
   const handleSendMessage = async (content: string, image?: File) => {
     if (!selectedConversation) return false
+
+    // Tina chat
+    if (isTinaChat) {
+      const userMsg: Message = {
+        _id: `user-${Date.now()}`,
+        content,
+        sender: { _id: currentUserId, name: currentUser?.name || "Você", avatar: currentUser?.avatar || "" },
+        createdAt: new Date().toISOString(),
+        read: true,
+      }
+      setTinaMessages(prev => [...prev, userMsg])
+      setTinaLoading(true)
+
+      try {
+        const token = localStorage.getItem("token")
+        const response = await fetch("/api/tina/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ message: content })
+        })
+
+        const data = await response.json()
+        const tinaReply: Message = {
+          _id: `tina-${Date.now()}`,
+          content: data.response || data.error || "Desculpe, não consegui processar sua mensagem.",
+          sender: TINA_SENDER,
+          createdAt: new Date().toISOString(),
+          read: true,
+        }
+        setTinaMessages(prev => [...prev, tinaReply])
+      } catch {
+        setTinaMessages(prev => [...prev, {
+          _id: `tina-err-${Date.now()}`,
+          content: "Ops! Estou temporariamente indisponível. Tente novamente em alguns segundos. 😅",
+          sender: TINA_SENDER,
+          createdAt: new Date().toISOString(),
+          read: true,
+        }])
+      } finally {
+        setTinaLoading(false)
+      }
+      return true
+    }
     
     const success = await sendMessage(selectedConversation, content, image, replyingTo?._id)
     if (success) {
       setReplyingTo(null)
       await fetchMessages(selectedConversation)
       await fetchConversations()
+
+      // Check for @Tina mention in group chats
+      if (selectedConv?.type === "group" && /@tina/i.test(content)) {
+        handleTinaMention(content, selectedConversation)
+      }
     }
     return success
+  }
+
+  const handleTinaMention = async (content: string, conversationId: string) => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/tina/group", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: content, conversationId, senderName: currentUser?.name })
+      })
+      const data = await response.json()
+      if (data.response) {
+        // Send Tina's reply as a system-like message via the normal send endpoint
+        await sendMessage(conversationId, `🤖 Tina: ${data.response}`)
+        await fetchMessages(conversationId)
+        await fetchConversations()
+      }
+    } catch (err) {
+      console.error("Tina mention error:", err)
+    }
   }
 
   const fetchFollowingSuggestions = async () => {
@@ -253,8 +459,19 @@ export default function MessagesPage() {
     setSelectedConversation(null)
   }
 
-  const selectedConv = conversations.find(c => c._id === selectedConversation)
-  const isGroupChat = selectedConv?.type === 'group'
+  const tinaConversation = isTinaChat ? {
+    _id: TINA_ID,
+    type: "direct" as const,
+    participants: [
+      { _id: currentUserId, name: currentUser?.name || "", avatar: currentUser?.avatar || "" },
+      { _id: TINA_ID, name: "Tina IA", avatar: "/tina.png", isOnline: true }
+    ],
+    lastMessage: { content: "", createdAt: new Date().toISOString(), sender: TINA_ID },
+    unreadCount: 0
+  } : null
+
+  const selectedConv = isTinaChat ? tinaConversation : conversations.find(c => c._id === selectedConversation)
+  const isGroupChat = !isTinaChat && selectedConv?.type === 'group'
 
   const filteredConversations = conversations.filter((conversation) => {
     if (conversation.type === 'group') {
@@ -276,13 +493,13 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Esconder navbar e bottom nav no mobile quando estiver numa conversa */}
-      <div className={selectedConversation ? 'hidden lg:block' : ''}>
+    <div className="h-screen bg-background overflow-hidden flex flex-col fixed inset-0 z-50">
+      {/* Navbar só no desktop */}
+      <div className="hidden lg:block flex-shrink-0">
         <Navbar />
       </div>
-      <div className="container mx-auto px-0 sm:px-4 py-0 sm:py-6 max-w-6xl">
-        <div className={`flex ${selectedConversation ? 'h-screen lg:h-[calc(100vh-8rem)]' : 'h-[calc(100vh-4rem)] sm:h-[calc(100vh-8rem)]'} overflow-hidden sm:rounded-xl sm:border border-border sm:shadow-sm`}>
+      <div className="flex-1 min-h-0 flex flex-col sm:container sm:mx-auto sm:px-4 sm:py-6 sm:max-w-6xl overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden sm:rounded-xl sm:border border-border sm:shadow-sm">
           {/* Sidebar - Conversation List */}
           <div className={`w-full lg:w-[380px] lg:min-w-[380px] border-r border-border bg-card flex flex-col ${selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
             {/* Header */}
@@ -370,40 +587,59 @@ export default function MessagesPage() {
               selectedConversation={selectedConversation}
               currentUserId={currentUserId}
               onSelectConversation={handleSelectConversation}
+              tinaLastMessage={tinaMessages.length > 0 ? tinaMessages[tinaMessages.length - 1].content : undefined}
             />
           </div>
 
           {/* Main - Chat Window */}
-          <div className={`flex-1 flex flex-col bg-background ${!selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
+          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden bg-background ${!selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
+	  <div className="flex-1 min-h-0 overflow-hidden">
             <ChatWindow
               conversation={selectedConv || null}
-              messages={messages}
+              messages={isTinaChat ? tinaMessages : messages}
               currentUserId={currentUserId}
-              onCall={(type) => {
+              onCall={isTinaChat ? undefined : (type) => {
                 const otherParticipant = selectedConv?.participants.find(p => p._id !== currentUserId)
                 if (otherParticipant && typeof window !== 'undefined' && (window as any).startCall) {
                   (window as any).startCall(otherParticipant._id, otherParticipant.name, type)
                 }
               }}
-              onInfo={() => isGroupChat && setShowGroupInfo(true)}
+              onInfo={isGroupChat ? () => setShowGroupInfo(true) : undefined}
               onBack={handleBackToList}
               isUserScrolling={isUserScrolling}
               shouldAutoScroll={shouldAutoScroll}
               onScroll={handleScroll}
               onScrollToBottom={handleScrollToBottom}
-              onReplyMessage={(msg) => setReplyingTo(msg)}
-              typingUsers={Array.from(typingUsers.values())}
+              onReplyMessage={isTinaChat ? undefined : (msg) => setReplyingTo(msg)}
+              typingUsers={tinaLoading ? ["Tina IA"] : Array.from(typingUsers.values())}
+              onReaction={isTinaChat ? undefined : handleReaction}
+              isVerifiedUser={true}
+              preferredLanguage={currentUserLanguage}
+              onLanguageChange={async (lang) => {
+                setCurrentUserLanguage(lang)
+                try {
+                  const token = localStorage.getItem("token")
+                  await fetch("/api/profile", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ name: currentUser?.name, preferredLanguage: lang })
+                  })
+                } catch {}
+                if (lang && selectedConversation) {
+                  await fetchMessages(selectedConversation)
+                }
+              }}
             />
-
+	    </div>
             {selectedConversation && (
               <MessageInput
                 onSendMessage={handleSendMessage}
-                disabled={false}
-                placeholder="Digite sua mensagem..."
-                replyingTo={replyingTo}
+                disabled={tinaLoading}
+                placeholder={isTinaChat ? "Pergunte algo à Tina..." : "Digite sua mensagem..."}
+                replyingTo={isTinaChat ? null : replyingTo}
                 onCancelReply={() => setReplyingTo(null)}
-                onTypingStart={() => selectedConversation && startTyping(selectedConversation)}
-                onTypingStop={() => selectedConversation && stopTyping(selectedConversation)}
+                onTypingStart={isTinaChat ? undefined : () => startTyping(selectedConversation)}
+                onTypingStop={isTinaChat ? undefined : () => stopTyping(selectedConversation)}
               />
             )}
           </div>
