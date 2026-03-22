@@ -8,6 +8,7 @@ import { MessageCircle, Users } from "lucide-react"
 import { Conversation } from "@/types/message"
 
 const TINA_ID = "tina-ia"
+const SYSTEM_ID = "socializenow-system"
 
 interface ConversationListProps {
   conversations: Conversation[]
@@ -16,6 +17,7 @@ interface ConversationListProps {
   onSelectConversation: (conversationId: string) => void
   emptyMessage?: string
   tinaLastMessage?: string
+  systemLastMessage?: string
 }
 
 export function ConversationList({
@@ -24,7 +26,8 @@ export function ConversationList({
   currentUserId,
   onSelectConversation,
   emptyMessage = "Nenhuma conversa encontrada",
-  tinaLastMessage
+  tinaLastMessage,
+  systemLastMessage
 }: ConversationListProps) {
   
   const getOtherParticipant = (conversation: Conversation) => {
@@ -117,6 +120,38 @@ export function ConversationList({
               {tinaLastMessage || "Olá! 👋 Sou a Tina, como posso ajudar?"}
             </p>
             <p className="text-[11px] text-emerald-500 mt-0.5">Sempre online</p>
+          </div>
+        </div>
+
+        {/* SocializeNow - Contato especial */}
+        <div
+          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all ${
+            selectedConversation === SYSTEM_ID
+              ? "bg-primary/10 border-l-3 border-l-primary"
+              : "hover:bg-muted/50"
+          }`}
+          onClick={() => onSelectConversation(SYSTEM_ID)}
+        >
+          <div className="relative">
+            <Avatar className="h-12 w-12 ring-2 ring-blue-500/30">
+              <AvatarImage src="/logo.png" alt="SocializeNow" />
+              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-cyan-500 text-white text-sm font-bold">
+                SN
+              </AvatarFallback>
+            </Avatar>
+            <div className="absolute -bottom-0 -right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-card rounded-full"></div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <p className="font-semibold text-foreground text-sm">SocializeNow</p>
+                <span className="text-[10px] bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-1.5 py-0.5 rounded-full font-medium">Oficial</span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
+              {systemLastMessage || "Alertas e novidades da plataforma"}
+            </p>
+            <p className="text-[11px] text-blue-500 mt-0.5">Contato especial</p>
           </div>
         </div>
 

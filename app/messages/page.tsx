@@ -39,13 +39,34 @@ export default function MessagesPage() {
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map())
   const [currentUserVerified, setCurrentUserVerified] = useState(false)
   const [currentUserLanguage, setCurrentUserLanguage] = useState("")
-  const [tinaMessages, setTinaMessages] = useState<Message[]>([])
+  const [tinaMessages, setTinaMessages] = useState<Message[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("tina_messages")
+        if (saved) return JSON.parse(saved)
+      } catch {}
+    }
+    return []
+  })
   const [tinaLoading, setTinaLoading] = useState(false)
+  const [systemMessages, setSystemMessages] = useState<Message[]>([])
+
+  // Persist Tina messages to localStorage
+  useEffect(() => {
+    if (tinaMessages.length > 0) {
+      try {
+        localStorage.setItem("tina_messages", JSON.stringify(tinaMessages))
+      } catch {}
+    }
+  }, [tinaMessages])
 
   const TINA_ID = "tina-ia"
   const TINA_SENDER = { _id: TINA_ID, name: "Tina IA", avatar: "/tina.png" }
+  const SYSTEM_ID = "socializenow-system"
+  const SYSTEM_SENDER = { _id: SYSTEM_ID, name: "SocializeNow", avatar: "/logo.png" }
 
   const isTinaChat = selectedConversation === TINA_ID
+  const isSystemChat = selectedConversation === SYSTEM_ID
 
   // Refs to avoid stale closures in socket callbacks
   const currentUserLanguageRef = React.useRef(currentUserLanguage)
@@ -241,16 +262,19 @@ export default function MessagesPage() {
     }
   }, [selectedConversation])
 
+  const translatingRef = React.useRef(false)
   useEffect(() => {
-    if (!currentUserLanguage || messages.length === 0) return
+    if (!currentUserLanguage || messages.length === 0 || translatingRef.current) return
     
     const needsTranslation = messages.some(
       msg => msg.sender._id !== currentUserId && msg.content && !msg.translatedContent
     )
     
     if (needsTranslation) {
+      translatingRef.current = true
       translateMessages(messages, currentUserLanguage).then(translated => {
         setMessages(translated)
+        translatingRef.current = false
       })
     }
   }, [messages.length, currentUserLanguage])
@@ -280,6 +304,19 @@ export default function MessagesPage() {
       }
       return
     }
+    if (conversationId === SYSTEM_ID) {
+      try {
+        const token = localStorage.getItem("token")
+        const response = await fetch("/api/messages/system", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setSystemMessages(data.messages)
+        }
+      } catch {}
+      return
+    }
     await fetchMessages(conversationId)
     await markConversationRead(conversationId)
     markRead(conversationId, currentUserId)
@@ -288,6 +325,7 @@ export default function MessagesPage() {
 
   const handleSendMessage = async (content: string, image?: File) => {
     if (!selectedConversation) return false
+    if (isSystemChat) return false
 
     // Tina chat
     if (isTinaChat) {
@@ -470,7 +508,18 @@ export default function MessagesPage() {
     unreadCount: 0
   } : null
 
-  const selectedConv = isTinaChat ? tinaConversation : conversations.find(c => c._id === selectedConversation)
+  const systemConversation = isSystemChat ? {
+    _id: SYSTEM_ID,
+    type: "direct" as const,
+    participants: [
+      { _id: currentUserId, name: currentUser?.name || "", avatar: currentUser?.avatar || "" },
+      { _id: SYSTEM_ID, name: "SocializeNow", avatar: "/logo.png", isOnline: true }
+    ],
+    lastMessage: { content: "", createdAt: new Date().toISOString(), sender: SYSTEM_ID },
+    unreadCount: 0
+  } : null
+
+  const selectedConv = isTinaChat ? tinaConversation : isSystemChat ? systemConversation : conversations.find(c => c._id === selectedConversation)
   const isGroupChat = !isTinaChat && selectedConv?.type === 'group'
 
   const filteredConversations = conversations.filter((conversation) => {
@@ -493,7 +542,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="h-screen bg-background overflow-hidden flex flex-col fixed inset-0 z-50">
+    <div className="bg-background overflow-hidden flex flex-col fixed inset-0 z-50" style={{ height: '100dvh' }}>
       {/* Navbar só no desktop */}
       <div className="hidden lg:block flex-shrink-0">
         <Navbar />
@@ -505,6 +554,9 @@ export default function MessagesPage() {
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+                <Button variant="ghost" size="sm" className="lg:hidden h-8 w-8 p-0 rounded-full" onClick={() => router.back()}>
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
                 <MessageCircle className="h-5 w-5 text-primary" />
                 Mensagens
               </h2>
@@ -588,15 +640,15 @@ export default function MessagesPage() {
               currentUserId={currentUserId}
               onSelectConversation={handleSelectConversation}
               tinaLastMessage={tinaMessages.length > 0 ? tinaMessages[tinaMessages.length - 1].content : undefined}
+              systemLastMessage={systemMessages.length > 0 ? systemMessages[0].content : undefined}
             />
           </div>
 
           {/* Main - Chat Window */}
-          <div className={`flex-1 flex flex-col min-h-0 overflow-hidden bg-background ${!selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
-	  <div className="flex-1 min-h-0 overflow-hidden">
+          <div className={`flex-1 flex flex-col min-h-0 bg-background ${!selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
             <ChatWindow
               conversation={selectedConv || null}
-              messages={isTinaChat ? tinaMessages : messages}
+              messages={isTinaChat ? tinaMessages : isSystemChat ? systemMessages : messages}
               currentUserId={currentUserId}
               onCall={isTinaChat ? undefined : (type) => {
                 const otherParticipant = selectedConv?.participants.find(p => p._id !== currentUserId)
@@ -630,8 +682,7 @@ export default function MessagesPage() {
                 }
               }}
             />
-	    </div>
-            {selectedConversation && (
+            {selectedConversation && !isSystemChat && (
               <MessageInput
                 onSendMessage={handleSendMessage}
                 disabled={tinaLoading}

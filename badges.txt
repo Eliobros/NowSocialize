@@ -1,0 +1,18 @@
+import { BadgeCheck } from 'lucide-react'; 
+const Badge = ({ type }) => {
+  const config = { dono: { color: 
+    '#FFD700', label: 'Dono' }, // Dourado 
+    dev: { color: '#8B5CF6', label: 
+    'Desenvolvedor' }, // Roxo empresa: { 
+    color: '#3B82F6', label: 'Empresa' }, 
+    // Azul Oficial
+    criador: { color: '#00BAFF', label: 
+    'Verificado' } // Azul Claro
+  };
+  const current = config[type] || 
+  config.criador; return (
+    <BadgeCheck size={18} 
+      fill={current.color} stroke="white" 
+      title={current.label}
+    /> );
+};

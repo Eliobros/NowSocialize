@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       followers: userProfile.followers || 0,
       following: userProfile.following || 0,
       isVerified: userProfile.isVerified || false,
+      badgeType: userProfile.badgeType || "verificado",
       preferredLanguage: userProfile.preferredLanguage || "",
       postsCount,
     }

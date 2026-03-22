@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
       username: user.username,
       userEmailVerified: user.userEmailVerified ?? false,
       isVerified: (user as any).isVerified ?? false,
+      badgeType: (user as any).badgeType || "verificado",
       preferredLanguage: (user as any).preferredLanguage || "",
     })
   } catch (error) {

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Textarea } from "@/components/ui/textarea"
 import { CheckCircle, XCircle, Shield, MessageSquare, Loader2 } from "lucide-react"
 
 interface VerifyRequest {
@@ -16,10 +17,13 @@ interface VerifyRequest {
   userId: string
   fullName: string
   birthDate: string
+  documentType: string
   documentFront: string
   documentBack: string
+  selfie: string
   reason: string
   status: "pending" | "approved" | "rejected"
+  rejectReason?: string
   createdAt: string
   user: {
     name: string
@@ -48,6 +52,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({})
+  const [badgeTypes, setBadgeTypes] = useState<Record<string, string>>({})
+  const [manualBadgeUserId, setManualBadgeUserId] = useState("")
+  const [manualBadgeType, setManualBadgeType] = useState("verificado")
+  const [badgeSuccess, setBadgeSuccess] = useState("")
 
   const handleLogin = () => {
     if (password === "Cadeira33@") {
@@ -88,14 +97,34 @@ export default function AdminPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, reason: rejectReasons[requestId] || "", badgeType: badgeTypes[requestId] || "verificado" }),
       })
 
       if (response.ok) {
-        fetchData() // Recarregar dados
+        fetchData()
       }
     } catch (error) {
       setError("Erro ao processar solicitação")
+    }
+  }
+
+  const handleSetManualBadge = async () => {
+    try {
+      const response = await fetch("/api/admin/set-badge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, userId: manualBadgeUserId, badgeType: manualBadgeType }),
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setBadgeSuccess(data.message)
+        setManualBadgeUserId("")
+        setTimeout(() => setBadgeSuccess(""), 3000)
+      } else {
+        setError(data.error)
+      }
+    } catch {
+      setError("Erro ao atribuir selo")
     }
   }
 
@@ -172,6 +201,10 @@ export default function AdminPage() {
               <MessageSquare className="h-4 w-4" />
               Tickets de Suporte ({supportTickets.filter((t) => t.status === "open").length})
             </TabsTrigger>
+            <TabsTrigger value="badges" className="gap-2">
+              <Shield className="h-4 w-4" />
+              Gerenciar Selos
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="verify">
@@ -231,6 +264,11 @@ export default function AdminPage() {
                       </div>
 
                       <div>
+                        <label className="text-sm font-medium">Tipo de Documento:</label>
+                        <p>{request.documentType === 'bi' ? 'Bilhete de Identidade' : request.documentType === 'passport' ? 'Passaporte' : request.documentType === 'rg' ? 'RG' : request.documentType === 'cnh' ? 'CNH' : request.documentType === 'dire' ? 'DIRE' : request.documentType || 'Não informado'}</p>
+                      </div>
+
+                      <div>
                         <label className="text-sm font-medium">Motivo:</label>
                         <p className="mt-1">{request.reason}</p>
                       </div>
@@ -254,20 +292,64 @@ export default function AdminPage() {
                         </div>
                       </div>
 
+                      <div>
+                        <label className="text-sm font-medium">Foto Pessoal (Selfie):</label>
+                        {request.selfie && (
+                          <img
+                            src={request.selfie}
+                            alt="Selfie"
+                            className="mt-2 w-full max-w-xs h-48 object-cover rounded border"
+                          />
+                        )}
+                      </div>
+
                       {request.status === "pending" && (
-                        <div className="flex gap-2 pt-4">
-                          <Button onClick={() => handleVerifyRequest(request._id, "approve")} className="flex-1">
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Aprovar
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            onClick={() => handleVerifyRequest(request._id, "reject")}
-                            className="flex-1"
-                          >
-                            <XCircle className="h-4 w-4 mr-2" />
-                            Rejeitar
-                          </Button>
+                        <div className="space-y-3 pt-4">
+                          <div>
+                            <label className="text-sm font-medium mb-1 block">Tipo de Selo</label>
+                            <select
+                              value={badgeTypes[request._id] || "verificado"}
+                              onChange={(e) => setBadgeTypes(prev => ({ ...prev, [request._id]: e.target.value }))}
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <option value="verificado">✅ Verificado (Azul Claro)</option>
+                              <option value="dev">💻 Desenvolvedor (Verde)</option>
+                              <option value="dev_sn">🟣 Dev SocializeNow (Roxo)</option>
+                              <option value="empresa">🏢 Empresa Oficial (Azul)</option>
+                              <option value="dono">👑 Dono (Dourado)</option>
+                            </select>
+                          </div>
+                          <Textarea
+                            placeholder="Motivo da recusa (obrigatório para rejeitar)..."
+                            value={rejectReasons[request._id] || ""}
+                            onChange={(e) => setRejectReasons(prev => ({ ...prev, [request._id]: e.target.value }))}
+                          />
+                          <div className="flex gap-2">
+                            <Button onClick={() => handleVerifyRequest(request._id, "approve")} className="flex-1">
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Aprovar
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              onClick={() => {
+                                if (!rejectReasons[request._id]?.trim()) {
+                                  alert("Escreva o motivo da recusa antes de rejeitar")
+                                  return
+                                }
+                                handleVerifyRequest(request._id, "reject")
+                              }}
+                              className="flex-1"
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Rejeitar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      {request.status === "rejected" && request.rejectReason && (
+                        <div className="mt-2 p-3 bg-red-50 rounded-lg">
+                          <p className="text-sm font-medium text-red-800">Motivo da recusa:</p>
+                          <p className="text-sm text-red-700">{request.rejectReason}</p>
                         </div>
                       )}
                     </CardContent>
@@ -331,6 +413,47 @@ export default function AdminPage() {
                 ))
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="badges">
+            <Card>
+              <CardHeader>
+                <CardTitle>Atribuir Selo Manualmente</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">ID do Usuário</label>
+                  <Input
+                    placeholder="Cole o ID do usuário aqui"
+                    value={manualBadgeUserId}
+                    onChange={(e) => setManualBadgeUserId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Tipo de Selo</label>
+                  <select
+                    value={manualBadgeType}
+                    onChange={(e) => setManualBadgeType(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="verificado">✅ Verificado (Azul Claro)</option>
+                    <option value="dev">💻 Desenvolvedor (Verde)</option>
+                    <option value="dev_sn">🟣 Dev SocializeNow (Roxo)</option>
+                    <option value="empresa">🏢 Empresa Oficial (Azul)</option>
+                    <option value="dono">👑 Dono (Dourado)</option>
+                  </select>
+                </div>
+                <Button onClick={handleSetManualBadge} disabled={!manualBadgeUserId}>
+                  <Shield className="h-4 w-4 mr-2" />
+                  Atribuir Selo
+                </Button>
+                {badgeSuccess && (
+                  <Alert>
+                    <AlertDescription>{badgeSuccess}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

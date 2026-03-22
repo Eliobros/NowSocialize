@@ -23,6 +23,7 @@ async function getUserProfile(userId: string) {
           bio: 1,
           avatar: 1,
           isVerified: 1,
+          badgeType: 1,
           followers: {
             $cond: {
               if: { $isArray: "$followers" },

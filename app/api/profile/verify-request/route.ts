@@ -32,10 +32,12 @@ export async function POST(request: NextRequest) {
     const fullName = formData.get("fullName") as string
     const birthDate = formData.get("birthDate") as string
     const reason = formData.get("reason") as string
+    const documentType = formData.get("documentType") as string
     const documentFront = formData.get("documentFront") as File
     const documentBack = formData.get("documentBack") as File
+    const selfie = formData.get("selfie") as File
 
-    if (!fullName || !birthDate || !reason || !documentFront || !documentBack) {
+    if (!fullName || !birthDate || !reason || !documentType || !documentFront || !documentBack || !selfie) {
       return NextResponse.json({ error: "Todos os campos são obrigatórios" }, { status: 400 })
     }
 
@@ -46,6 +48,13 @@ export async function POST(request: NextRequest) {
 
     if (documentFront.size > 5 * 1024 * 1024 || documentBack.size > 5 * 1024 * 1024) {
       return NextResponse.json({ error: "As imagens devem ter no máximo 5MB" }, { status: 400 })
+    }
+
+    if (!selfie.type.startsWith("image/")) {
+      return NextResponse.json({ error: "A selfie deve ser uma imagem" }, { status: 400 })
+    }
+    if (selfie.size > 5 * 1024 * 1024) {
+      return NextResponse.json({ error: "A selfie deve ter no máximo 5MB" }, { status: 400 })
     }
 
     const client = await clientPromise
@@ -85,14 +94,22 @@ export async function POST(request: NextRequest) {
     await writeFile(join(uploadDir, frontFilename), frontBuffer)
     await writeFile(join(uploadDir, backFilename), backBuffer)
 
+    const selfieExtension = selfie.name.split(".").pop()
+    const selfieFilename = `${user.userId}_selfie_${timestamp}.${selfieExtension}`
+    const selfieBytes = await selfie.arrayBuffer()
+    const selfieBuffer = Buffer.from(selfieBytes)
+    await writeFile(join(uploadDir, selfieFilename), selfieBuffer)
+
     // Criar solicitação
     await verifyRequests.insertOne({
       userId: new ObjectId(user.userId),
       fullName,
       birthDate: new Date(birthDate),
       reason,
+      documentType,
       documentFront: `/documents/${frontFilename}`,
       documentBack: `/documents/${backFilename}`,
+      selfie: `/documents/${selfieFilename}`,
       status: "pending",
       createdAt: new Date(),
     })

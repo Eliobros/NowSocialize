@@ -7,7 +7,7 @@ export async function PUT(
   { params }: { params: Promise<{ requestId: string }> }
 ) {
   try {
-    const { action } = await request.json()
+    const { action, reason, badgeType } = await request.json()
     const { requestId } = await params
 
     if (!["approve", "reject"].includes(action)) {
@@ -32,6 +32,7 @@ export async function PUT(
       {
         $set: {
           status: action === "approve" ? "approved" : "rejected",
+          rejectReason: action === "reject" ? reason : null,
           updatedAt: new Date(),
         },
       },
@@ -39,14 +40,14 @@ export async function PUT(
 
     // Se aprovado, marcar usuário como verificado
     if (action === "approve") {
-      await users.updateOne({ _id: verifyRequest.userId }, { $set: { isVerified: true } })
+      await users.updateOne({ _id: verifyRequest.userId }, { $set: { isVerified: true, badgeType: badgeType || "verificado" } })
     }
 
     // Criar notificação para o usuário
     const message =
       action === "approve"
-        ? "Parabéns! A Equipe da SocializeNow aprovou seu pedido para obtenção do selo. Verifique seu perfil, caso não apareça contate a equipe da SocializeNow."
-        : "Sua solicitação de selo de verificação foi rejeitada. Entre em contato com o suporte para mais informações."
+        ? "Parabéns! 🎉 A Equipe da SocializeNow aprovou seu pedido para obtenção do selo. Verifique seu perfil!"
+        : `Sua solicitação de selo foi recusada. Motivo: ${reason || "Não especificado"}. Você pode tentar novamente.`
 
     await notifications.insertOne({
       userId: verifyRequest.userId,
@@ -54,6 +55,15 @@ export async function PUT(
       message,
       read: false,
       createdAt: new Date(),
+    })
+
+    // Enviar mensagem via contato especial SocializeNow
+    const systemMessages = db.collection("systemMessages")
+    await systemMessages.insertOne({
+      userId: verifyRequest.userId,
+      content: message,
+      createdAt: new Date(),
+      read: false,
     })
 
     return NextResponse.json({ message: "Solicitação processada com sucesso" })

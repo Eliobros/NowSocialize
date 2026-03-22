@@ -24,8 +24,10 @@ export async function GET() {
           $project: {
             fullName: 1,
             birthDate: 1,
+            documentType: 1,
             documentFront: 1,
             documentBack: 1,
+            selfie: 1,
             reason: 1,
             status: 1,
             createdAt: 1,

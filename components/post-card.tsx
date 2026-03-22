@@ -6,8 +6,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
-import { Heart, MessageCircle, Share, Send, CheckCircle, X, MoreHorizontal, Trash2 } from "lucide-react"
+import { Heart, MessageCircle, Share, Send, X, MoreHorizontal, Trash2 } from "lucide-react"
 import Link from "next/link"
+import { VerifiedBadge } from "@/components/verified-badge"
 import { useState, useEffect } from "react"
 
 interface Post {
@@ -20,6 +21,7 @@ interface Post {
     _id: string
     avatar?: string
     isVerified?: boolean
+    badgeType?: string
   }
   createdAt: string
   likes: number
@@ -35,6 +37,7 @@ interface Post {
       name: string
       avatar?: string
       isVerified?: boolean
+      badgeType?: string
     }
   }
   sharesCount?: number
@@ -299,7 +302,7 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
               onClick={() => console.log(`Navegando para perfil: ${post.author._id}`)}
             >
               {post.author.name}
-              {post.author.isVerified && <CheckCircle className="h-4 w-4 text-blue-500" />}
+              {post.author.isVerified && <VerifiedBadge type={(post.author.badgeType as any) || "verificado"} size={16} />}
             </Link>
             <p className="text-sm text-muted-foreground">{formatDate(post.createdAt)}</p>
           </div>
@@ -325,7 +328,7 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        {post.content && <p className="mb-4 whitespace-pre-wrap break-words overflow-wrap-anywhere">{post.content}</p>}
+        {post.content && <p className="mb-4 whitespace-pre-wrap break-words overflow-wrap-anywhere">{renderMentions(post.content)}</p>}
 
         {post.image && (
           <div className="mb-4">
@@ -349,7 +352,7 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
                 </Avatar>
                 <Link href={`/profile/${post.sharedPost.author?._id}`} className="text-sm font-semibold hover:text-blue-600 flex items-center gap-1">
                   {post.sharedPost.author?.name}
-                  {post.sharedPost.author?.isVerified && <CheckCircle className="h-3 w-3 text-blue-500" />}
+                  {post.sharedPost.author?.isVerified && <VerifiedBadge type={(post.sharedPost.author.badgeType as any) || "verificado"} size={14} />}
                 </Link>
                 <span className="text-xs text-muted-foreground">{formatDate(post.sharedPost.createdAt)}</span>
               </div>
@@ -521,7 +524,7 @@ export function PostCard({ post, currentUserId, onPostDeleted }: PostCardProps) 
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               {post.author.name}
-              {post.author.isVerified && <CheckCircle className="h-5 w-5 text-blue-500" />}
+              {post.author.isVerified && <VerifiedBadge type={(post.author.badgeType as any) || "verificado"} size={20} />}
             </DialogTitle>
             <Button
               variant="ghost"

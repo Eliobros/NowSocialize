@@ -4,8 +4,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Heart, MessageCircle, Share, CheckCircle, Volume2, VolumeX, X } from "lucide-react"
+import { Heart, MessageCircle, Share, Volume2, VolumeX, X } from "lucide-react"
 import Link from "next/link"
+import { VerifiedBadge } from "@/components/verified-badge"
 import { useState, useRef, useEffect } from "react"
 
 interface Reel {
@@ -18,6 +19,7 @@ interface Reel {
     username: string
     avatar?: string
     isVerified?: boolean
+    badgeType?: string
   }
   createdAt: string
   likes: number
@@ -238,7 +240,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
                 className="font-semibold hover:text-blue-300 transition-colors flex items-center gap-1"
               >
                 {reel.author.name}
-                {reel.author.isVerified && <CheckCircle className="h-4 w-4 text-blue-500" />}
+                {reel.author.isVerified && <VerifiedBadge type={(reel.author.badgeType as any) || "verificado"} size={16} />}
               </Link>
               <p className="text-sm text-gray-300">@{reel.author.username}</p>
             </div>
@@ -289,7 +291,7 @@ export function ReelCard({ reel, onReelViewed, isActive = false }: ReelCardProps
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               {reel.author.name}
-              {reel.author.isVerified && <CheckCircle className="h-5 w-5 text-blue-500" />}
+              {reel.author.isVerified && <VerifiedBadge type={(reel.author.badgeType as any) || "verificado"} size={20} />}
             </DialogTitle>
             <Button
               variant="ghost"

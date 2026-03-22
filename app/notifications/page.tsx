@@ -7,7 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Bell, Heart, MessageCircle, UserPlus, Check, Share2 } from "lucide-react"
+import { Loader2, Bell, Heart, MessageCircle, UserPlus, Check, Share2, ArrowLeft } from "lucide-react"
+import { io } from "socket.io-client"
 
 interface Notification {
   _id: string
@@ -39,10 +40,27 @@ export default function NotificationsPage() {
     }
     fetchNotifications()
 
-    // Simular notificações em tempo real
-    const interval = setInterval(fetchNotifications, 30000) // Atualiza a cada 30 segundos
+    // Notificações em tempo real via Socket.IO
+    const socket = io('https://socket-socializenow.duckdns.org', {
+      transports: ['websocket', 'polling'],
+      auth: { token }
+    })
 
-    return () => clearInterval(interval)
+    socket.on('connect', () => {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      socket.emit('join', payload.userId)
+    })
+
+    socket.on('new_notification', (notification: Notification) => {
+      setNotifications(prev => {
+        if (prev.some(n => n._id === notification._id)) return prev
+        return [notification, ...prev]
+      })
+    })
+
+    return () => {
+      socket.disconnect()
+    }
   }, [router])
 
   const fetchNotifications = async () => {
@@ -199,6 +217,9 @@ export default function NotificationsPage() {
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <CardTitle className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="lg:hidden h-8 w-8 p-0 rounded-full" onClick={() => router.back()}>
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
                 <Bell className="h-6 w-6" />
                 Notificações
                 {unreadCount > 0 && (

@@ -27,13 +27,16 @@ export default function SettingsPage() {
 
   const frontDocRef = useRef<HTMLInputElement>(null)
   const backDocRef = useRef<HTMLInputElement>(null)
+  const selfieRef = useRef<HTMLInputElement>(null)
 
   const [verifyForm, setVerifyForm] = useState({
     fullName: "",
     birthDate: "",
     reason: "",
+    documentType: "",
     documentFront: null as File | null,
     documentBack: null as File | null,
+    selfie: null as File | null,
   })
 
   const [supportForm, setSupportForm] = useState({
@@ -99,8 +102,8 @@ export default function SettingsPage() {
 
   const handleVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!verifyForm.documentFront || !verifyForm.documentBack) {
-      setError("Por favor, envie ambos os lados do documento")
+    if (!verifyForm.documentFront || !verifyForm.documentBack || !verifyForm.selfie || !verifyForm.documentType) {
+      setError("Por favor, preencha todos os campos e envie todos os documentos")
       return
     }
 
@@ -114,6 +117,8 @@ export default function SettingsPage() {
       formData.append("reason", verifyForm.reason)
       formData.append("documentFront", verifyForm.documentFront)
       formData.append("documentBack", verifyForm.documentBack)
+      formData.append("documentType", verifyForm.documentType)
+      formData.append("selfie", verifyForm.selfie)
 
       const token = localStorage.getItem("token")
       const response = await fetch("/api/profile/verify-request", {
@@ -127,8 +132,9 @@ export default function SettingsPage() {
       const data = await response.json()
 
       if (response.ok) {
-        // Redirecionar para pagamento em vez de mostrar sucesso
-        router.push("/pagamento-selo")
+        setSuccess("Solicitação enviada com sucesso! Nossa equipe analisará seus dados.")
+        setShowVerifyDialog(false)
+        setVerifyForm({ fullName: user?.name || "", birthDate: "", reason: "", documentType: "", documentFront: null, documentBack: null, selfie: null })
       } else {
         setError(data.error || "Erro ao enviar solicitação")
       }
@@ -408,6 +414,24 @@ export default function SettingsPage() {
                             </div>
                           </div>
 
+                          <div>
+                            <Label htmlFor="documentType">Tipo de Documento</Label>
+                            <select
+                              id="documentType"
+                              value={verifyForm.documentType}
+                              onChange={(e) => setVerifyForm({ ...verifyForm, documentType: e.target.value })}
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              required
+                            >
+                              <option value="">Selecione o tipo de documento</option>
+                              <option value="bi">Bilhete de Identidade (BI)</option>
+                              <option value="passport">Passaporte</option>
+                              <option value="rg">RG</option>
+                              <option value="cnh">Carta de Condução (CNH)</option>
+                              <option value="dire">DIRE (Documento de Identificação de Residente Estrangeiro)</option>
+                            </select>
+                          </div>
+
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <Label>Documento (Frente)</Label>
@@ -460,6 +484,33 @@ export default function SettingsPage() {
                           </div>
 
                           <div>
+                            <Label>Foto Pessoal (Selfie)</Label>
+                            <p className="text-xs text-muted-foreground mb-2">Tire uma foto do seu rosto segurando o documento</p>
+                            <div className="mt-1">
+                              <input
+                                ref={selfieRef}
+                                type="file"
+                                accept="image/*"
+                                capture="user"
+                                onChange={(e) =>
+                                  setVerifyForm({ ...verifyForm, selfie: e.target.files?.[0] || null })
+                                }
+                                className="hidden"
+                                required
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => selfieRef.current?.click()}
+                                className="w-full"
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                {verifyForm.selfie ? verifyForm.selfie.name : "Tirar foto / Escolher"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div>
                             <Label htmlFor="reason">Por que você quer obter o selo de verificação?</Label>
                             <Textarea
                               id="reason"
@@ -473,7 +524,7 @@ export default function SettingsPage() {
 
                           <Button type="submit" disabled={submitting} className="w-full">
                             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                            Prosseguir para Pagamento
+                            Enviar Solicitação
                           </Button>
                         </form>
                       </DialogContent>

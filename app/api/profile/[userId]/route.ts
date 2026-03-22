@@ -79,6 +79,7 @@ export async function GET(
       postsCount: postsCount,
       isFollowing: !!isFollowing,
       isVerified: targetUser.isVerified || false,
+      badgeType: targetUser.badgeType || "verificado",
     }
 
     return NextResponse.json({ profile })

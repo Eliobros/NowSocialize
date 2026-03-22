@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
             "author.email": 1,
             "author.avatar": 1,
             "author.isVerified": 1,
+            "author.badgeType": 1,
             sharedPost: {
               $cond: {
                 if: { $gt: [{ $size: "$sharedPostData" }, 0] },
@@ -123,6 +124,7 @@ export async function GET(request: NextRequest) {
                         name: { $arrayElemAt: ["$sharedPostAuthor.name", 0] },
                         avatar: { $arrayElemAt: ["$sharedPostAuthor.avatar", 0] },
                         isVerified: { $arrayElemAt: ["$sharedPostAuthor.isVerified", 0] },
+                        badgeType: { $arrayElemAt: ["$sharedPostAuthor.badgeType", 0] },
                       },
                       else: null,
                     },

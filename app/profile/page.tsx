@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Edit, MessageSquare, Settings, Shield, Camera, CheckCircle, Menu, LogOut, Palette, Award } from "lucide-react"
+import { Loader2, Edit, MessageSquare, Settings, Shield, Camera, Menu, LogOut, Palette, Award } from "lucide-react"
+import { VerifiedBadge } from "@/components/verified-badge"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 interface UserProfile {
@@ -28,6 +29,7 @@ interface UserProfile {
   postsCount: number
   createdAt: string
   isVerified: boolean
+  badgeType?: string
 }
 
 interface Post {
@@ -368,7 +370,7 @@ export default function ProfilePage() {
               <div className="flex-1 text-center md:text-left">
                 <h1 className="text-3xl font-bold mb-2">
                   {profile.name}
-                  {profile.isVerified && <CheckCircle className="inline-block h-5 w-5 text-blue-500 ml-2" />}
+                  {profile.isVerified && <VerifiedBadge type={(profile.badgeType as any) || "verificado"} size={20} className="ml-2" />}
                 </h1>
                 {profile.username && <p className="text-gray-600 mb-2">@{profile.username}</p>}
                 {profile.bio && <p className="text-gray-700 mb-4">{profile.bio}</p>}

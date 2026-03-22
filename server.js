@@ -242,6 +242,15 @@ app.prepare().then(() => {
       }
     })
 
+    // ==================== NOTIFICAÇÕES EM TEMPO REAL ====================
+    socket.on("send_notification", (data) => {
+      const { toUserId, notification } = data
+      if (toUserId) {
+        io.to(toUserId).emit("new_notification", notification)
+        console.log(`Notification sent to ${toUserId}`)
+      }
+    })
+
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id)
 

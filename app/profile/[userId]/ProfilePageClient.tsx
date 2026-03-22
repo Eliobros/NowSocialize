@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, MessageCircle, UserPlus, UserMinus } from "lucide-react"
+import { VerifiedBadge } from "@/components/verified-badge"
 
 interface UserProfile {
   _id: string
@@ -23,6 +24,8 @@ interface UserProfile {
   following: number
   postsCount: number
   isFollowing?: boolean
+  isVerified?: boolean
+  badgeType?: string
 }
 
 interface Post {
@@ -197,7 +200,10 @@ export default function ProfilePageClient({ params }: { params: { userId: string
                 )}
               </Avatar>
               <div className="flex-1 text-center sm:text-left">
-                <CardTitle className="text-2xl mb-2">{profile.name}</CardTitle>
+                <CardTitle className="text-2xl mb-2 flex items-center gap-1">
+  {profile.name}
+  {profile.isVerified && <VerifiedBadge type={(profile.badgeType as any) || "verificado"} size={20} />}
+</CardTitle>
                 <p className="text-muted-foreground mb-2">@{profile.username}</p>
                 {profile.bio && <p className="text-foreground mb-4">{profile.bio}</p>}
                 <div className="flex justify-center sm:justify-start gap-4 mb-4">
