@@ -1,22 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { ObjectId } from "mongodb"
-import { writeFile, mkdir } from "fs/promises"
-import { join } from "path"
 import clientPromise from "@/lib/mongodb"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
+const PERSONA_API_KEY = process.env.PERSONA_API_KEY!
+const PERSONA_TEMPLATE_ID = process.env.PERSONA_TEMPLATE_ID!
 
 function verifyToken(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null
-  }
-
-  const token = authHeader.substring(7)
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null
   try {
-    return jwt.verify(token, JWT_SECRET) as any
-  } catch (error) {
+    return jwt.verify(authHeader.substring(7), JWT_SECRET) as any
+  } catch {
     return null
   }
 }
@@ -28,103 +24,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const formData = await request.formData()
-    const fullName = formData.get("fullName") as string
-    const birthDate = formData.get("birthDate") as string
-    const reason = formData.get("reason") as string
-    const documentType = formData.get("documentType") as string
-    const documentFront = formData.get("documentFront") as File
-    const documentBack = formData.get("documentBack") as File
-    const selfie = formData.get("selfie") as File
-
-    if (!fullName || !birthDate || !reason || !documentType || !documentFront || !documentBack || !selfie) {
-      return NextResponse.json({ error: "Todos os campos são obrigatórios" }, { status: 400 })
-    }
-
-    // Validar arquivos
-    if (!documentFront.type.startsWith("image/") || !documentBack.type.startsWith("image/")) {
-      return NextResponse.json({ error: "Apenas arquivos de imagem são permitidos" }, { status: 400 })
-    }
-
-    if (documentFront.size > 5 * 1024 * 1024 || documentBack.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: "As imagens devem ter no máximo 5MB" }, { status: 400 })
-    }
-
-    if (!selfie.type.startsWith("image/")) {
-      return NextResponse.json({ error: "A selfie deve ser uma imagem" }, { status: 400 })
-    }
-    if (selfie.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: "A selfie deve ter no máximo 5MB" }, { status: 400 })
-    }
-
     const client = await clientPromise
     const db = client.db("socializenow")
     const verifyRequests = db.collection("verifyRequests")
     const notifications = db.collection("notifications")
 
-    // Verificar se já existe uma solicitação pendente
+    // Verificar se já existe solicitação pendente
     const existingRequest = await verifyRequests.findOne({
       userId: new ObjectId(user.userId),
-      status: "pending",
+      status: { $in: ["pending", "processing"] },
     })
 
     if (existingRequest) {
       return NextResponse.json({ error: "Você já possui uma solicitação pendente" }, { status: 400 })
     }
 
-    // Salvar arquivos
-    const timestamp = Date.now()
-    const frontExtension = documentFront.name.split(".").pop()
-    const backExtension = documentBack.name.split(".").pop()
-    const frontFilename = `${user.userId}_front_${timestamp}.${frontExtension}`
-    const backFilename = `${user.userId}_back_${timestamp}.${backExtension}`
+    // Criar Inquiry no Persona
+    const personaResponse = await fetch("https://api.withpersona.com/api/v1/inquiries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${PERSONA_API_KEY}`,
+        "Persona-Version": "2023-01-05",
+      },
+      body: JSON.stringify({
+        data: {
+          attributes: {
+            "inquiry-template-id": PERSONA_TEMPLATE_ID,
+            "reference-id": user.userId, // liga o inquiry ao teu user
+            fields: {
+              "email-address": user.email || null,
+            }
+          }
+        }
+      })
+    })
 
-    const uploadDir = join(process.cwd(), "public", "documents")
-    try {
-      await mkdir(uploadDir, { recursive: true })
-    } catch (error) {
-      // Directory might already exist
+    if (!personaResponse.ok) {
+      const err = await personaResponse.json()
+      console.error("Persona error:", err)
+      return NextResponse.json({ error: "Erro ao iniciar verificação" }, { status: 500 })
     }
 
-    const frontBytes = await documentFront.arrayBuffer()
-    const backBytes = await documentBack.arrayBuffer()
-    const frontBuffer = Buffer.from(frontBytes)
-    const backBuffer = Buffer.from(backBytes)
+    const personaData = await personaResponse.json()
+    const inquiryId = personaData.data.id
 
-    await writeFile(join(uploadDir, frontFilename), frontBuffer)
-    await writeFile(join(uploadDir, backFilename), backBuffer)
+    // Criar session para o usuário completar a verificação
+    const sessionResponse = await fetch(`https://api.withpersona.com/api/v1/inquiries/${inquiryId}/sessions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${PERSONA_API_KEY}`,
+        "Persona-Version": "2023-01-05",
+      }
+    })
 
-    const selfieExtension = selfie.name.split(".").pop()
-    const selfieFilename = `${user.userId}_selfie_${timestamp}.${selfieExtension}`
-    const selfieBytes = await selfie.arrayBuffer()
-    const selfieBuffer = Buffer.from(selfieBytes)
-    await writeFile(join(uploadDir, selfieFilename), selfieBuffer)
+    const sessionData = await sessionResponse.json()
+    const sessionToken = sessionData.data?.attributes?.["session-token"]
 
-    // Criar solicitação
+    // Salvar no MongoDB com status processing
     await verifyRequests.insertOne({
       userId: new ObjectId(user.userId),
-      fullName,
-      birthDate: new Date(birthDate),
-      reason,
-      documentType,
-      documentFront: `/documents/${frontFilename}`,
-      documentBack: `/documents/${backFilename}`,
-      selfie: `/documents/${selfieFilename}`,
-      status: "pending",
+      inquiryId,
+      status: "processing",
       createdAt: new Date(),
     })
 
-    // Criar notificação para o usuário
+    // Notificar o usuário
     await notifications.insertOne({
       userId: new ObjectId(user.userId),
       type: "verification_request",
-      message:
-        "O seu pedido de solicitação de selo foi enviado para a Equipe da SocializeNow. Você receberá uma notificação quando for aprovada ou se precisarem de mais informações.",
+      message: "Verificação iniciada! Complete o processo clicando no link enviado.",
       read: false,
       createdAt: new Date(),
     })
 
-    return NextResponse.json({ message: "Solicitação enviada com sucesso" })
+    // Retorna a URL do Persona para o frontend redirecionar
+    return NextResponse.json({
+      message: "Verificação iniciada",
+      sessionToken,
+      verificationUrl: `https://withpersona.com/verify?inquiry-id=${inquiryId}&session-token=${sessionToken}`
+    })
+
   } catch (error) {
     console.error("Verify request error:", error)
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })

@@ -15,18 +15,18 @@ import { CheckCircle, XCircle, Shield, MessageSquare, Loader2 } from "lucide-rea
 interface VerifyRequest {
   _id: string
   userId: string
-  fullName: string
-  birthDate: string
-  documentType: string
-  documentFront: string
-  documentBack: string
-  selfie: string
+  category: string
   reason: string
-  status: "pending" | "approved" | "rejected"
+  socialLinks: string[]
+  personaInquiryId: string
+  identityStatus: string
+  verificationStatus: string
   rejectReason?: string
-  createdAt: string
+  submittedAt: string
+  updatedAt?: string
   user: {
     name: string
+    username: string
     email: string
     avatar: string
   }
@@ -58,31 +58,50 @@ export default function AdminPage() {
   const [manualBadgeType, setManualBadgeType] = useState("verificado")
   const [badgeSuccess, setBadgeSuccess] = useState("")
 
-  const handleLogin = () => {
-    if (password === "Cadeira33@") {
+  const handleLogin = async () => {
+  try {
+    const res = await fetch("/api/admin/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    })
+
+    const data = await res.json()
+
+    if (res.ok) {
+      sessionStorage.setItem("admin_token", data.token)
       setIsAuthenticated(true)
       fetchData()
     } else {
-      setError("Senha incorreta")
+      setError(data.error || "Senha incorreta")
     }
+  } catch {
+    setError("Erro ao conectar ao servidor")
   }
+}
 
   const fetchData = async () => {
     setLoading(true)
     try {
       // Buscar solicitações de verificação
-      const verifyResponse = await fetch("/api/admin/verify-requests")
-      if (verifyResponse.ok) {
-        const verifyData = await verifyResponse.json()
-        setVerifyRequests(verifyData.requests)
-      }
+      const token = sessionStorage.getItem("admin_token")
 
-      // Buscar tickets de suporte
-      const supportResponse = await fetch("/api/admin/support-tickets")
-      if (supportResponse.ok) {
-        const supportData = await supportResponse.json()
-        setSupportTickets(supportData.tickets)
-      }
+const verifyResponse = await fetch("/api/admin/verify-requests", {
+  headers: { "x-admin-token": token || "" }
+})
+if (verifyResponse.ok) {
+  const verifyData = await verifyResponse.json()
+  setVerifyRequests(verifyData.requests)
+}
+
+// Buscar tickets de suporte
+const supportResponse = await fetch("/api/admin/support-tickets", {
+  headers: { "x-admin-token": token || "" }
+})
+if (supportResponse.ok) {
+  const supportData = await supportResponse.json()
+  setSupportTickets(supportData.tickets)
+}
     } catch (error) {
       setError("Erro ao carregar dados")
     } finally {
@@ -91,29 +110,36 @@ export default function AdminPage() {
   }
 
   const handleVerifyRequest = async (requestId: string, action: "approve" | "reject") => {
-    try {
-      const response = await fetch(`/api/admin/verify-requests/${requestId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action, reason: rejectReasons[requestId] || "", badgeType: badgeTypes[requestId] || "verificado" }),
-      })
+  try {
+    const token = sessionStorage.getItem("admin_token")
+    const response = await fetch(`/api/admin/verify-requests/${requestId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-token": token || ""
+      },
+      body: JSON.stringify({ action, reason: rejectReasons[requestId] || "", badgeType: badgeTypes[requestId] || "verificado" }),
+    })
 
-      if (response.ok) {
-        fetchData()
-      }
-    } catch (error) {
-      setError("Erro ao processar solicitação")
+    if (response.ok) {
+      fetchData()
     }
+  } catch (error) {
+    setError("Erro ao processar solicitação")
   }
+}
 
   const handleSetManualBadge = async () => {
     try {
+      const token = sessionStorage.getItem("admin_token")
+
       const response = await fetch("/api/admin/set-badge", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, userId: manualBadgeUserId, badgeType: manualBadgeType }),
+        headers: { 
+  "Content-Type": "application/json",
+  "x-admin-token": token || ""
+},
+body: JSON.stringify({ userId: manualBadgeUserId, badgeType: manualBadgeType }),
       })
       const data = await response.json()
       if (response.ok) {
@@ -129,22 +155,24 @@ export default function AdminPage() {
   }
 
   const handleSupportTicket = async (ticketId: string, action: "close") => {
-    try {
-      const response = await fetch(`/api/admin/support-tickets/${ticketId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action }),
-      })
+  try {
+    const token = sessionStorage.getItem("admin_token")
+    const response = await fetch(`/api/admin/support-tickets/${ticketId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-token": token || ""
+      },
+      body: JSON.stringify({ action }),
+    })
 
-      if (response.ok) {
-        fetchData() // Recarregar dados
-      }
-    } catch (error) {
-      setError("Erro ao processar ticket")
+    if (response.ok) {
+      fetchData()
     }
+  } catch (error) {
+    setError("Erro ao processar ticket")
   }
+}
 
   if (!isAuthenticated) {
     return (
@@ -192,172 +220,168 @@ export default function AdminPage() {
         )}
 
         <Tabs defaultValue="verify" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="verify" className="gap-2">
-              <Shield className="h-4 w-4" />
-              Solicitações de Verificação ({verifyRequests.filter((r) => r.status === "pending").length})
-            </TabsTrigger>
-            <TabsTrigger value="support" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Tickets de Suporte ({supportTickets.filter((t) => t.status === "open").length})
-            </TabsTrigger>
-            <TabsTrigger value="badges" className="gap-2">
-              <Shield className="h-4 w-4" />
-              Gerenciar Selos
-            </TabsTrigger>
-          </TabsList>
-
+          <TabsList className="flex w-full flex-col h-auto sm:flex-row">
+  <TabsTrigger value="verify" className="w-full gap-2">
+    <Shield className="h-4 w-4" />
+    Verificações ({verifyRequests.filter((r) => r.verificationStatus === "awaiting_team_review").length})
+  </TabsTrigger>
+  <TabsTrigger value="support" className="w-full gap-2">
+    <MessageSquare className="h-4 w-4" />
+    Suporte ({supportTickets.filter((t) => t.status === "open").length})
+  </TabsTrigger>
+  <TabsTrigger value="badges" className="w-full gap-2">
+    <Shield className="h-4 w-4" />
+    Selos
+  </TabsTrigger>
+</TabsList>
+          
           <TabsContent value="verify">
-            <div className="space-y-6">
-              {loading ? (
-                <div className="flex justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin" />
+  <div className="space-y-6">
+    {loading ? (
+      <div className="flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    ) : verifyRequests.length === 0 ? (
+      <Card>
+        <CardContent className="text-center py-12">
+          <p className="text-gray-500">Nenhuma solicitação de verificação encontrada</p>
+        </CardContent>
+      </Card>
+    ) : (
+      verifyRequests.map((request) => (
+        <Card key={request._id}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarImage src={request.user.avatar || "/placeholder.svg"} />
+                  <AvatarFallback>{request.user.name[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold">{request.user.name}</h3>
+                  <p className="text-sm text-gray-500">@{request.user.username} • {request.user.email}</p>
                 </div>
-              ) : verifyRequests.length === 0 ? (
-                <Card>
-                  <CardContent className="text-center py-12">
-                    <p className="text-gray-500">Nenhuma solicitação de verificação encontrada</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                verifyRequests.map((request) => (
-                  <Card key={request._id}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={request.user.avatar || "/placeholder.svg"} />
-                            <AvatarFallback>{request.user.name[0]}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <h3 className="font-semibold">{request.user.name}</h3>
-                            <p className="text-sm text-gray-600">{request.user.email}</p>
-                          </div>
-                        </div>
-                        <Badge
-                          variant={
-                            request.status === "pending"
-                              ? "default"
-                              : request.status === "approved"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {request.status === "pending"
-                            ? "Pendente"
-                            : request.status === "approved"
-                              ? "Aprovado"
-                              : "Rejeitado"}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm font-medium">Nome Completo:</label>
-                          <p>{request.fullName}</p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium">Data de Nascimento:</label>
-                          <p>{new Date(request.birthDate).toLocaleDateString("pt-BR")}</p>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium">Tipo de Documento:</label>
-                        <p>{request.documentType === 'bi' ? 'Bilhete de Identidade' : request.documentType === 'passport' ? 'Passaporte' : request.documentType === 'rg' ? 'RG' : request.documentType === 'cnh' ? 'CNH' : request.documentType === 'dire' ? 'DIRE' : request.documentType || 'Não informado'}</p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium">Motivo:</label>
-                        <p className="mt-1">{request.reason}</p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm font-medium">Documento (Frente):</label>
-                          <img
-                            src={request.documentFront || "/placeholder.svg"}
-                            alt="Documento frente"
-                            className="mt-2 w-full h-32 object-cover rounded border"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium">Documento (Verso):</label>
-                          <img
-                            src={request.documentBack || "/placeholder.svg"}
-                            alt="Documento verso"
-                            className="mt-2 w-full h-32 object-cover rounded border"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium">Foto Pessoal (Selfie):</label>
-                        {request.selfie && (
-                          <img
-                            src={request.selfie}
-                            alt="Selfie"
-                            className="mt-2 w-full max-w-xs h-48 object-cover rounded border"
-                          />
-                        )}
-                      </div>
-
-                      {request.status === "pending" && (
-                        <div className="space-y-3 pt-4">
-                          <div>
-                            <label className="text-sm font-medium mb-1 block">Tipo de Selo</label>
-                            <select
-                              value={badgeTypes[request._id] || "verificado"}
-                              onChange={(e) => setBadgeTypes(prev => ({ ...prev, [request._id]: e.target.value }))}
-                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              <option value="verificado">✅ Verificado (Azul Claro)</option>
-                              <option value="dev">💻 Desenvolvedor (Verde)</option>
-                              <option value="dev_sn">🟣 Dev SocializeNow (Roxo)</option>
-                              <option value="empresa">🏢 Empresa Oficial (Azul)</option>
-                              <option value="dono">👑 Dono (Dourado)</option>
-                            </select>
-                          </div>
-                          <Textarea
-                            placeholder="Motivo da recusa (obrigatório para rejeitar)..."
-                            value={rejectReasons[request._id] || ""}
-                            onChange={(e) => setRejectReasons(prev => ({ ...prev, [request._id]: e.target.value }))}
-                          />
-                          <div className="flex gap-2">
-                            <Button onClick={() => handleVerifyRequest(request._id, "approve")} className="flex-1">
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Aprovar
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              onClick={() => {
-                                if (!rejectReasons[request._id]?.trim()) {
-                                  alert("Escreva o motivo da recusa antes de rejeitar")
-                                  return
-                                }
-                                handleVerifyRequest(request._id, "reject")
-                              }}
-                              className="flex-1"
-                            >
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Rejeitar
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      {request.status === "rejected" && request.rejectReason && (
-                        <div className="mt-2 p-3 bg-red-50 rounded-lg">
-                          <p className="text-sm font-medium text-red-800">Motivo da recusa:</p>
-                          <p className="text-sm text-red-700">{request.rejectReason}</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))
-              )}
+              </div>
+              <div className="flex flex-col gap-1 items-end">
+                <Badge variant={
+                  request.verificationStatus === "awaiting_team_review" ? "default" :
+                  request.verificationStatus === "approved" ? "secondary" :
+                  request.verificationStatus === "rejected" ? "destructive" : "outline"
+                }>
+                  {request.verificationStatus === "pending_identity" && "⏳ Verificando identidade"}
+                  {request.verificationStatus === "awaiting_team_review" && "🔍 Aguardando equipe"}
+                  {request.verificationStatus === "approved" && "✅ Aprovado"}
+                  {request.verificationStatus === "rejected" && "❌ Rejeitado"}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {request.identityStatus === "identity_verified" ? "🪪 Identidade verificada" : "⏳ Identidade pendente"}
+                </Badge>
+              </div>
             </div>
-          </TabsContent>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Categoria:</label>
+                <p className="capitalize">{
+                  request.category === "criador" ? "🎨 Criador de Conteúdo" :
+                  request.category === "artista" ? "🎵 Artista" :
+                  request.category === "empresa" ? "🏢 Empresa" :
+                  request.category === "figura_publica" ? "🌟 Figura Pública" :
+                  request.category === "influenciador" ? "📱 Influenciador" :
+                  request.category === "jornalista" ? "📰 Jornalista" :
+                  "✨ Outro"
+                }</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Submetido em:</label>
+                <p className="text-sm">{new Date(request.submittedAt).toLocaleString("pt-BR")}</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Motivo:</label>
+              <p className="mt-1 text-gray-700">{request.reason}</p>
+            </div>
+
+            {request.socialLinks?.length > 0 && (
+              <div>
+                <label className="text-sm font-medium">Links sociais:</label>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {request.socialLinks.map((link: string, i: number) => (
+                    <a
+                      key={i}
+                      href={link.startsWith("http") ? link : `https://${link}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 underline"
+                    >
+                      {link}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {request.verificationStatus === "awaiting_team_review" && (
+              <div className="space-y-3 pt-4 border-t">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Tipo de Selo</label>
+                  <select
+                    value={badgeTypes[request._id] || "verificado"}
+                    onChange={(e) => setBadgeTypes(prev => ({ ...prev, [request._id]: e.target.value }))}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="verificado">✅ Verificado (Azul Claro)</option>
+                    <option value="dev">💻 Desenvolvedor (Verde)</option>
+                    <option value="dev_sn">🟣 Dev SocializeNow (Roxo)</option>
+                    <option value="empresa">🏢 Empresa Oficial (Azul)</option>
+                    <option value="dono">👑 Dono (Dourado)</option>
+                  </select>
+                </div>
+                <Textarea
+                  placeholder="Motivo da recusa (obrigatório para rejeitar)..."
+                  value={rejectReasons[request._id] || ""}
+                  onChange={(e) => setRejectReasons(prev => ({ ...prev, [request._id]: e.target.value }))}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleVerifyRequest(request._id, "approve")}
+                    className="flex-1"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Aprovar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (!rejectReasons[request._id]?.trim()) {
+                        alert("Escreva o motivo da recusa antes de rejeitar")
+                        return
+                      }
+                      handleVerifyRequest(request._id, "reject")
+                    }}
+                    className="flex-1"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Rejeitar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {request.verificationStatus === "rejected" && request.rejectReason && (
+              <div className="mt-2 p-3 bg-red-50 rounded-lg">
+                <p className="text-sm font-medium text-red-800">Motivo da recusa:</p>
+                <p className="text-sm text-red-700">{request.rejectReason}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))
+    )}
+  </div>
+</TabsContent>
 
           <TabsContent value="support">
             <div className="space-y-6">

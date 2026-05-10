@@ -1,13 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { ObjectId } from "mongodb"
 import clientPromise from "@/lib/mongodb"
+import { isAdminAuthorized } from "@/lib/adminAuth"
 
 export async function PUT(
-  request: NextRequest, 
+  request: NextRequest,
   context: { params: Promise<{ ticketId: string }> }
 ) {
+  if (!isAdminAuthorized(request)) {
+    return NextResponse.json(
+      { error: "Não autorizado" },
+      { status: 401 }
+    )
+  }
+
   try {
-    const { ticketId } = await context.params  // ← AWAIT aqui!
+    const { ticketId } = await context.params
     const { action } = await request.json()
 
     if (action !== "close") {

@@ -99,6 +99,7 @@ export async function GET(
         {
           $project: {
             content: 1,
+	    originalContent: 1,
             image: 1,
             audioUrl: 1,
             type: 1,

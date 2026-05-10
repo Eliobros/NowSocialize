@@ -1,20 +1,26 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { ObjectId } from "mongodb"
 import clientPromise from "@/lib/mongodb"
+import { isAdminAuthorized } from "@/lib/adminAuth"
 
-const ADMIN_PASSWORD = "Cadeira33@"
 const VALID_BADGES = ["verificado", "dev", "dev_sn", "empresa", "dono"]
 
 export async function POST(request: NextRequest) {
   try {
-    const { password, userId, badgeType } = await request.json()
-
-    if (password !== ADMIN_PASSWORD) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+    if (!isAdminAuthorized(request)) {
+      return NextResponse.json(
+        { error: "Não autorizado" },
+        { status: 401 }
+      )
     }
 
+    const { userId, badgeType } = await request.json()
+
     if (!VALID_BADGES.includes(badgeType)) {
-      return NextResponse.json({ error: "Tipo de selo inválido" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Tipo de selo inválido" },
+        { status: 400 }
+      )
     }
 
     const client = await clientPromise
@@ -25,9 +31,15 @@ export async function POST(request: NextRequest) {
       { $set: { isVerified: true, badgeType } }
     )
 
-    return NextResponse.json({ message: `Selo "${badgeType}" atribuído com sucesso` })
+    return NextResponse.json({ 
+      message: `Selo "${badgeType}" atribuído com sucesso` 
+    })
+
   } catch (error) {
     console.error("Set badge error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Erro interno" },
+      { status: 500 }
+    )
   }
 }

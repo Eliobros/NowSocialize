@@ -58,7 +58,8 @@ export function useMessages() {
     conversationId: string,
     content: string,
     image?: File,
-    replyToId?: string
+    replyToId?: string,
+    targetLang?: string 
   ) => {
     try {
       const token = localStorage.getItem("token")
@@ -69,6 +70,7 @@ export function useMessages() {
         formData.append("content", content)
         formData.append("image", image)
         if (replyToId) formData.append("replyToId", replyToId)
+	if (targetLang) formData.append("targetLang", targetLang)
 
         const response = await fetch("/api/messages", {
           method: "POST",
@@ -87,7 +89,8 @@ export function useMessages() {
           body: JSON.stringify({
             conversationId,
             content,
-            replyToId
+            replyToId,
+	    targetLang
           })
         })
 

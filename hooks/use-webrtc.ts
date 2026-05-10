@@ -58,6 +58,21 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
   const callStartTime = useRef<number>(0)
   const activityTimerRef = useRef<NodeJS.Timeout>()
 
+  // Refs para evitar dependências instáveis no endCall
+  const participantsRef = useRef<CallUser[]>([])
+  const localStreamRef = useRef<MediaStream | null>(null)
+
+  // Helpers que atualizam state e ref ao mesmo tempo
+  const setParticipantsWithRef = useCallback((value: CallUser[]) => {
+    participantsRef.current = value
+    setParticipants(value)
+  }, [])
+
+  const setLocalStreamWithRef = useCallback((value: MediaStream | null) => {
+    localStreamRef.current = value
+    setLocalStream(value)
+  }, [])
+
   // Function to update online status
   const updateOnlineStatus = useCallback(async (isOnline: boolean) => {
     try {
@@ -88,6 +103,54 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     }
   }, [])
 
+  const startCallTimer = useCallback(() => {
+    callStartTime.current = Date.now()
+    callTimerRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000)
+      setCallDuration(elapsed)
+    }, 1000)
+  }, [])
+
+  const stopCallTimer = useCallback(() => {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current)
+      callTimerRef.current = undefined
+    }
+    setCallDuration(0)
+    callStartTime.current = 0
+  }, [])
+
+  const endCall = useCallback(() => {
+    // Usar ref em vez de state para evitar dependência instável
+    participantsRef.current.forEach((participant) => {
+      const socket = socketService.getSocket()
+      if (socket?.connected) {
+        socket.emit("end-call", {
+          to: participant.userId,
+          callId: currentCallId.current,
+        })
+      }
+    })
+
+    // Close all peer connections
+    peersRef.current.forEach((peer) => peer.destroy())
+    peersRef.current.clear()
+
+    // Stop local stream via ref
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      setLocalStreamWithRef(null)
+    }
+
+    // Reset state
+    setIsCallActive(false)
+    setRemoteStreams(new Map())
+    setParticipantsWithRef([])
+    setIncomingCall(null)
+    stopCallTimer()
+    currentCallId.current = ""
+  }, [stopCallTimer, setLocalStreamWithRef, setParticipantsWithRef])
+
   useEffect(() => {
     const socket = socketService.connect(currentUserId)
 
@@ -115,7 +178,6 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       if (peer) {
         peer.signal(data.signal)
       }
-      // Iniciar timer quando a chamada for aceita
       if (!callTimerRef.current) {
         startCallTimer()
       }
@@ -137,16 +199,13 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       }
     })
 
-    // Listen for user status changes
     socket.on("user-status-changed", (data) => {
-      // You can emit this to parent components if needed
       console.log("User status changed:", data)
     })
 
-    // Set up activity timer to keep user online
     activityTimerRef.current = setInterval(() => {
       sendUserActivity()
-    }, 30000) // Send activity every 30 seconds
+    }, 30000)
 
     return () => {
       socket.off("connect")
@@ -158,32 +217,14 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       socket.off("call-ended")
       socket.off("webrtc-signal")
       socket.off("user-status-changed")
-      
+
       if (activityTimerRef.current) {
         clearInterval(activityTimerRef.current)
       }
-      
-      // Mark as offline when component unmounts
+
       updateOnlineStatus(false)
     }
-  }, [currentUserId, updateOnlineStatus, sendUserActivity])
-
-  const startCallTimer = useCallback(() => {
-    callStartTime.current = Date.now()
-    callTimerRef.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000)
-      setCallDuration(elapsed)
-    }, 1000)
-  }, [])
-
-  const stopCallTimer = useCallback(() => {
-    if (callTimerRef.current) {
-      clearInterval(callTimerRef.current)
-      callTimerRef.current = undefined
-    }
-    setCallDuration(0)
-    callStartTime.current = 0
-  }, [])
+  }, [currentUserId, updateOnlineStatus, sendUserActivity, startCallTimer, endCall])
 
   const getUserMedia = useCallback(async (callType: "audio" | "video" = "video") => {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -198,27 +239,26 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       }
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      setLocalStream(stream)
+      setLocalStreamWithRef(stream)
       setIsVideoEnabled(callType === "video")
       return stream
     } catch (error) {
       console.error("Erro ao acessar dispositivos de mídia:", error)
-      
-      // Fallback: tentar apenas áudio se vídeo falhar
+
       if (callType === "video") {
         try {
           const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-          setLocalStream(audioStream)
+          setLocalStreamWithRef(audioStream)
           setIsVideoEnabled(false)
           return audioStream
         } catch (audioError) {
           console.error("Erro ao acessar áudio:", audioError)
         }
       }
-      
+
       return null
     }
-  }, [])
+  }, [setLocalStreamWithRef])
 
   const createPeer = useCallback(
     (userId: string, initiator: boolean, stream: MediaStream) => {
@@ -262,7 +302,6 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
 
       peer.on("error", (error) => {
         console.error(`Peer connection error with ${userId}:`, error)
-        // Tentar reconectar em caso de erro
         setTimeout(() => {
           if (peersRef.current.has(userId)) {
             const newPeer = createPeer(userId, initiator, stream)
@@ -312,9 +351,9 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       })
 
       setIsCallActive(true)
-      setParticipants([{ userId, name: userName }])
+      setParticipantsWithRef([{ userId, name: userName }])
     },
-    [currentUserId, currentUserName, getUserMedia, createPeer],
+    [currentUserId, currentUserName, getUserMedia, createPeer, setParticipantsWithRef],
   )
 
   const startCallWithType = useCallback(
@@ -342,9 +381,9 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       })
 
       setIsCallActive(true)
-      setParticipants([{ userId, name: userName }])
+      setParticipantsWithRef([{ userId, name: userName }])
     },
-    [currentUserId, currentUserName, getUserMedia, createPeer],
+    [currentUserId, currentUserName, getUserMedia, createPeer, setParticipantsWithRef],
   )
 
   const acceptCall = useCallback(async () => {
@@ -372,10 +411,10 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     })
 
     setIsCallActive(true)
-    setParticipants([{ userId: incomingCall.from, name: incomingCall.callerName }])
+    setParticipantsWithRef([{ userId: incomingCall.from, name: incomingCall.callerName }])
     setIncomingCall(null)
     startCallTimer()
-  }, [incomingCall, getUserMedia, createPeer, startCallTimer])
+  }, [incomingCall, getUserMedia, createPeer, startCallTimer, setParticipantsWithRef])
 
   const rejectCall = useCallback(() => {
     if (!incomingCall) return
@@ -391,56 +430,25 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     setIncomingCall(null)
   }, [incomingCall])
 
-  const endCall = useCallback(() => {
-    // Notify other participants
-    participants.forEach((participant) => {
-      const socket = socketService.getSocket()
-      if (socket?.connected) {
-        socket.emit("end-call", {
-          to: participant.userId,
-          callId: currentCallId.current,
-        })
-      }
-    })
-
-    // Close all peer connections
-    peersRef.current.forEach((peer) => peer.destroy())
-    peersRef.current.clear()
-
-    // Stop local stream
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop())
-      setLocalStream(null)
-    }
-
-    // Reset state
-    setIsCallActive(false)
-    setRemoteStreams(new Map())
-    setParticipants([])
-    setIncomingCall(null)
-    stopCallTimer()
-    currentCallId.current = ""
-  }, [participants, localStream, stopCallTimer])
-
   const toggleMute = useCallback(() => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0]
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0]
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled
         setIsMuted(!audioTrack.enabled)
       }
     }
-  }, [localStream])
+  }, [])
 
   const toggleVideo = useCallback(() => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0]
+    if (localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0]
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled
         setIsVideoEnabled(videoTrack.enabled)
       }
     }
-  }, [localStream])
+  }, [])
 
   const addParticipant = useCallback(
     (userId: string, userName: string) => {
@@ -457,7 +465,7 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     [currentUserId, currentUserName],
   )
 
-  // Cleanup on unmount
+  // Cleanup on unmount — endCall agora é estável, não causa loop
   useEffect(() => {
     return () => {
       endCall()

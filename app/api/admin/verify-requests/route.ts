@@ -1,7 +1,15 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import clientPromise from "@/lib/mongodb"
+import { isAdminAuthorized } from "@/lib/adminAuth"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!isAdminAuthorized(request)) {
+    return NextResponse.json(
+      { error: "Não autorizado" },
+      { status: 401 }
+    )
+  }
+
   try {
     const client = await clientPromise
     const db = client.db("socializenow")
@@ -22,22 +30,22 @@ export async function GET() {
         },
         {
           $project: {
-            fullName: 1,
-            birthDate: 1,
-            documentType: 1,
-            documentFront: 1,
-            documentBack: 1,
-            selfie: 1,
+            category: 1,
             reason: 1,
-            status: 1,
-            createdAt: 1,
+            socialLinks: 1,
+            personaInquiryId: 1,
+            identityStatus: 1,
+            verificationStatus: 1,
+            submittedAt: 1,
+            updatedAt: 1,
             "user.name": 1,
             "user.email": 1,
             "user.avatar": 1,
+            "user.username": 1,
           },
         },
         {
-          $sort: { createdAt: -1 },
+          $sort: { submittedAt: -1 },
         },
       ])
       .toArray()
@@ -45,6 +53,10 @@ export async function GET() {
     return NextResponse.json({ requests })
   } catch (error) {
     console.error("Get verify requests error:", error)
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Erro interno do servidor" },
+      { status: 500 }
+    )
   }
 }
+

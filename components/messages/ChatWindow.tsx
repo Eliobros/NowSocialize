@@ -296,7 +296,7 @@ export function ChatWindow({
               )
 
               const reactionCounts = getReactionCounts(message.reactions)
-              const hasTranslation = message.translatedContent && message.translatedContent !== message.content
+              const hasTranslation = message.originalContent && message.originalContent !== message.content
               const showingOriginal = showOriginal.has(message._id)
 
               return (
@@ -356,13 +356,22 @@ export function ChatWindow({
                             onClick={() => window.open(message.image, "_blank")}
                           />
                         )}
+                        
                         {message.content && (
-                          <p className="text-sm break-words leading-relaxed">
-                            {hasTranslation && !showingOriginal ? message.translatedContent : message.content}
-                          </p>
-                        )}
+  <p className="text-sm break-words leading-relaxed">
+    
+    {isMe 
+  ? (message.originalContent || message.content) 
+  : (hasTranslation && !showingOriginal ? message.content : (message.originalContent || message.content))
+}
+  </p>
+)}
+
+
+
+
                         {/* Translation indicator */}
-                        {hasTranslation && (
+                        {hasTranslation && !isMe && (
                           <button
                             onClick={() => toggleOriginal(message._id)}
                             className={`flex items-center gap-1 mt-1 text-[10px] ${

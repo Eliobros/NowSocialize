@@ -1,11 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { ObjectId } from "mongodb"
 import clientPromise from "@/lib/mongodb"
+import { isAdminAuthorized } from "@/lib/adminAuth"
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
 ) {
+  if (!isAdminAuthorized(request)) {
+    return NextResponse.json(
+      { error: "Não autorizado" },
+      { status: 401 }
+    )
+  }
+
   try {
     const { action, reason, badgeType } = await request.json()
     const { requestId } = await params
@@ -19,35 +27,35 @@ export async function PUT(
     const verifyRequests = db.collection("verifyRequests")
     const users = db.collection("users")
     const notifications = db.collection("notifications")
+    const systemMessages = db.collection("systemMessages")
 
-    // Buscar a solicitação
     const verifyRequest = await verifyRequests.findOne({ _id: new ObjectId(requestId) })
     if (!verifyRequest) {
       return NextResponse.json({ error: "Solicitação não encontrada" }, { status: 404 })
     }
 
-    // Atualizar status da solicitação
     await verifyRequests.updateOne(
       { _id: new ObjectId(requestId) },
       {
         $set: {
-          status: action === "approve" ? "approved" : "rejected",
+          verificationStatus: action === "approve" ? "approved" : "rejected",
           rejectReason: action === "reject" ? reason : null,
+          badgeType: action === "approve" ? (badgeType || "verificado") : null,
           updatedAt: new Date(),
         },
-      },
+      }
     )
 
-    // Se aprovado, marcar usuário como verificado
     if (action === "approve") {
-      await users.updateOne({ _id: verifyRequest.userId }, { $set: { isVerified: true, badgeType: badgeType || "verificado" } })
+      await users.updateOne(
+        { _id: verifyRequest.userId },
+        { $set: { isVerified: true, badgeType: badgeType || "verificado" } }
+      )
     }
 
-    // Criar notificação para o usuário
-    const message =
-      action === "approve"
-        ? "Parabéns! 🎉 A Equipe da SocializeNow aprovou seu pedido para obtenção do selo. Verifique seu perfil!"
-        : `Sua solicitação de selo foi recusada. Motivo: ${reason || "Não especificado"}. Você pode tentar novamente.`
+    const message = action === "approve"
+      ? "Parabéns! 🎉 A Equipe da SocializeNow aprovou seu pedido para obtenção do selo. Verifique seu perfil!"
+      : `Sua solicitação de selo foi recusada. Motivo: ${reason || "Não especificado"}. Você pode tentar novamente.`
 
     await notifications.insertOne({
       userId: verifyRequest.userId,
@@ -57,8 +65,6 @@ export async function PUT(
       createdAt: new Date(),
     })
 
-    // Enviar mensagem via contato especial SocializeNow
-    const systemMessages = db.collection("systemMessages")
     await systemMessages.insertOne({
       userId: verifyRequest.userId,
       content: message,

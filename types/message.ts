@@ -14,6 +14,7 @@ export interface User {
 export interface Message {
   _id: string
   content: string
+  originalContent?: string
   image?: string
   audioUrl?: string
   type?: 'text' | 'image' | 'audio'

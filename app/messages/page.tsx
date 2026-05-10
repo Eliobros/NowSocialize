@@ -64,6 +64,7 @@ export default function MessagesPage() {
   const TINA_SENDER = { _id: TINA_ID, name: "Tina IA", avatar: "/tina.png" }
   const SYSTEM_ID = "socializenow-system"
   const SYSTEM_SENDER = { _id: SYSTEM_ID, name: "SocializeNow", avatar: "/logo.png" }
+  const SOCKET_URL = "https://translate.mozhost.shop"
 
   const isTinaChat = selectedConversation === TINA_ID
   const isSystemChat = selectedConversation === SYSTEM_ID
@@ -98,7 +99,7 @@ export default function MessagesPage() {
       msgs.map(async (msg) => {
         if (!msg.content || msg.sender._id === currentUserId || msg.translatedContent) return msg
         try {
-          const response = await fetch("https://socket-socializenow.duckdns.org/api/translate", {
+          const response = await fetch(SOCKET_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: msg.content, target: targetLang })
@@ -129,7 +130,7 @@ export default function MessagesPage() {
         const lang = currentUserLanguageRef.current
         const myId = currentUserIdRef.current
         if (lang && newMessage.sender?._id !== myId && newMessage.content) {
-          fetch("https://socket-socializenow.duckdns.org/api/translate", {
+          fetch(SOCKET_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: newMessage.content, target: lang })
@@ -323,7 +324,7 @@ export default function MessagesPage() {
     await fetchConversations()
   }
 
-  const handleSendMessage = async (content: string, image?: File) => {
+  const handleSendMessage = async (content: string, image?: File, targetLang?: string) => {
     if (!selectedConversation) return false
     if (isSystemChat) return false
 
@@ -370,7 +371,7 @@ export default function MessagesPage() {
       return true
     }
     
-    const success = await sendMessage(selectedConversation, content, image, replyingTo?._id)
+    const success = await sendMessage(selectedConversation, content, image, replyingTo?._id, targetLang || currentUserLanguage || undefined)
     if (success) {
       setReplyingTo(null)
       await fetchMessages(selectedConversation)
@@ -685,6 +686,7 @@ export default function MessagesPage() {
             {selectedConversation && !isSystemChat && (
               <MessageInput
                 onSendMessage={handleSendMessage}
+		preferredLanguage={currentUserLanguage}
                 disabled={tinaLoading}
                 placeholder={isTinaChat ? "Pergunte algo à Tina..." : "Digite sua mensagem..."}
                 replyingTo={isTinaChat ? null : replyingTo}

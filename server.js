@@ -64,6 +64,8 @@ app.prepare().then(() => {
     },
   })
 
+global.io = io
+
   // Store active users
   const activeUsers = new Map()
 
@@ -113,10 +115,15 @@ app.prepare().then(() => {
         from,
         signal,
         callerName,
-        callType, // 'audio' or 'video'
+        callType,
         callId: `${from}-${to}-${Date.now()}`,
       })
     })
+
+   socket.onAny((eventName, data) => {
+  console.log(`[SOCKET DEBUG] Evento: ${eventName} | Dados:`, JSON.stringify(data));
+});
+
 
     // Handle call acceptance
     socket.on("accept-call", (data) => {
@@ -201,17 +208,52 @@ app.prepare().then(() => {
       }
     })
 
-    // Enviar mensagem (opcional - pode usar só via API)
+    // ==================== MENSAGENS COM TRADUÇÃO ====================
     socket.on("send_message", async (data) => {
-      const { conversationId, content, image } = data
+      const { conversationId, content, targetLang, image } = data
 
-      // Emite pra todos na conversa
+      console.log("-> Recebi no Socket:", content, "| Target:", targetLang); // LOG 1
+
+  
+      let finalContent = content
+      let originalLanguage = null
+
+      // Só traduz se tiver targetLang e conteúdo de texto
+      if (targetLang && content) {
+	   console.log("-> Chamando LibreTranslate...");
+        try {
+          const response = await fetch("http://localhost:5000/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              q: content,
+              source: "auto",
+              target: targetLang
+            })
+          })
+
+          const translated = await response.json()
+
+          if (translated.translatedText && translated.translatedText !== content) {
+            finalContent = translated.translatedText
+            originalLanguage = translated.detectedLanguage?.language || null
+          }
+        } catch (err) {
+          console.error("Erro ao traduzir no Socket:", err.message)
+          // fallback: envia o original sem tradução
+        }
+      }
+
       io.to(conversationId).emit("new_message", {
         ...data,
+        content: finalContent,
+        translatedContent: targetLang && finalContent !== content ? finalContent : null,
+        originalContent: content,
+        originalLanguage,
         createdAt: new Date().toISOString(),
       })
 
-      console.log(`Message sent to conversation ${conversationId}`)
+      console.log(`Mensagem enviada para ${conversationId}${targetLang ? ` (traduzida para ${targetLang})` : ""}`)
     })
 
     // ==================== CONFIRMAÇÃO DE LEITURA ====================
@@ -236,7 +278,7 @@ app.prepare().then(() => {
           messageId,
           emoji,
           userId,
-          action, // 'add' or 'remove'
+          action,
         })
         console.log(`Reaction ${action}: ${emoji} on message ${messageId}`)
       }
@@ -254,7 +296,6 @@ app.prepare().then(() => {
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id)
 
-      // Remove from active users and mark as offline
       for (const [userId, socketId] of activeUsers.entries()) {
         if (socketId === socket.id) {
           activeUsers.delete(userId)
@@ -275,4 +316,3 @@ app.prepare().then(() => {
     console.log(`> Socket.IO server running`)
   })
 })
-

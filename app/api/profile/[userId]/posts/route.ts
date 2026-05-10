@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const targetUserId = new ObjectId(userId)
 
-    // Get posts with author information
+    // Get posts with author information including badges and verification
     const postsList = await posts
       .aggregate([
         {
@@ -65,11 +65,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         {
           $project: {
             content: 1,
+            image: 1, // Adicionado para carregar as fotos dos posts no perfil
             createdAt: 1,
             likes: 1,
             "author._id": 1,
             "author.name": 1,
             "author.email": 1,
+            "author.isVerified": 1, // <--- CRUCIAL: Agora o frontend sabe que é verificado
+            "author.badgeType": 1,  // <--- CRUCIAL: Agora o frontend sabe que é dono/dev
             "author.avatar": { $arrayElemAt: ["$profile.avatar", 0] },
           },
         },

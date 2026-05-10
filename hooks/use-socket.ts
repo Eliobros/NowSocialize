@@ -33,7 +33,7 @@ export function useSocket(options: UseSocketOptions) {
     if (!token || !options.userId) return
 
     // Criar conexão socket
-    socketRef.current = io('https://socket-socializenow.duckdns.org', {
+    socketRef.current = io('https://socket.mozhost.shop', {
       transports: ['websocket', 'polling'],
       secure: true,
       reconnection: true,

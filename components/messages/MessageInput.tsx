@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Camera, Send, X, Loader2, Smile } from "lucide-react"
 
 interface MessageInputProps {
-  onSendMessage: (content: string, image?: File) => Promise<boolean>
+  onSendMessage: (content: string, image?: File, targetLang?: string) => Promise<boolean>
+  preferredLanguage?: string
   disabled?: boolean
   placeholder?: string
   replyingTo?: {
@@ -26,7 +27,8 @@ export function MessageInput({
   replyingTo,
   onCancelReply,
   onTypingStart,
-  onTypingStop
+  onTypingStop,
+  preferredLanguage = ""
 }: MessageInputProps) {
   const [message, setMessage] = useState("")
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
@@ -99,7 +101,7 @@ export function MessageInput({
 
     setSending(true)
     try {
-      const success = await onSendMessage(message, selectedImage || undefined)
+      const success = await onSendMessage(message, selectedImage || undefined, preferredLanguage)
       if (success) {
         setMessage("")
         removeImage()
