@@ -46,7 +46,7 @@ export async function GET(
     }
 
     // Verificar se o usuário atual curtiu o post
-    const likedByUser = post.likes?.some((id: ObjectId) => id.toString() === userId)
+    const likedByUser = post.likedBy?.some((id: ObjectId) => id.toString() === userId) ?? false
 
     // Contar comentários - USA postId AQUI TAMBÉM
     const comments = db.collection("comments")
@@ -64,7 +64,7 @@ export async function GET(
         isVerified: author.isVerified || false,
       },
       createdAt: post.createdAt,
-      likes: post.likes?.length || 0,
+      likes: typeof post.likes === 'number' ? post.likes : (post.likes?.length || 0),
       likedByUser,
       commentsCount,
     }
