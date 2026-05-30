@@ -134,7 +134,10 @@ export default function FeedPage() {
 
   const renderPost = ({ item }: { item: Post }) => (
     <View style={styles.postCard}>
-      <View style={styles.postHeader}>
+      <TouchableOpacity 
+  style={styles.postHeader}
+  onPress={() => router.push(`/profile/${item.author._id}` as any)}
+>
         <View style={styles.avatarContainer}>
           {item.author.avatar ? (
             <Image source={{ uri: item.author.avatar }} style={styles.avatar} />
@@ -147,8 +150,8 @@ export default function FeedPage() {
         <View style={styles.postAuthorInfo}>
           <Text style={styles.authorName}>{item.author.name}</Text>
           <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
-        </View>
-      </View>
+        </View>  {/* postAuthorInfo */}
+    </TouchableOpacity>  {/* ← muda aqui */}
       {item.content ? <Text style={styles.postContent}>{item.content}</Text> : null}
       {item.image && <Image source={{ uri: item.image }} style={styles.postImage} resizeMode="cover" />}
       <View style={styles.postActions}>

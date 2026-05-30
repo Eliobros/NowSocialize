@@ -37,7 +37,7 @@ export async function GET(
 
     // Buscar informações do autor
     const author = await users.findOne(
-      { _id: new ObjectId(post.userId) },
+  { _id: new ObjectId(post.authorId) },
       { projection: { name: 1, email: 1, avatar: 1, isVerified: 1 } }
     )
 
