@@ -54,7 +54,11 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("posts")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
-
+  const [mentionQuery, setMentionQuery] = useState("")
+  const [mentionUsers, setMentionUsers] = useState<{ _id: string; name: string; username: string }[]>([])
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false)
+  const [mentionCursorPos, setMentionCursorPos] = useState(0)
+  const [mentionedUserIds, setMentionedUserIds] = useState<Record<string, string>>({})
   const [profileForm, setProfileForm] = useState({
     name: "",
     username: "",
@@ -94,6 +98,9 @@ export default function ProfilePage() {
           username: data.profile.username || "",
           bio: data.profile.bio || "",
         })
+	if (data.profile.bio) {
+    resolveMentions(data.profile.bio)
+  }
       } else {
         setError("Erro ao carregar perfil")
       }
@@ -159,6 +166,7 @@ export default function ProfilePage() {
       if (response.ok) {
         setSuccess("Foto de perfil atualizada com sucesso!")
         fetchProfile()
+	fetchUserPosts()
       } else {
         setError(data.error || "Erro ao fazer upload da imagem")
       }
@@ -200,6 +208,102 @@ export default function ProfilePage() {
       setUpdating(false)
     }
   }
+
+  const resolveMentions = async (bio: string) => {
+  const matches = bio.match(/@(\w+)/g) || []
+  const usernames = [...new Set(matches.map((m) => m.slice(1)))]
+  if (usernames.length === 0) return
+
+  const token = localStorage.getItem("token")
+  const map: Record<string, string> = {}
+
+  await Promise.all(
+    usernames.map(async (username) => {
+      try {
+        const res = await fetch(`/api/search/users?q=${encodeURIComponent(username)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const exactMatch = (data.users || []).find((u: any) => u.username === username)
+          if (exactMatch) {
+            map[username] = exactMatch._id
+          }
+        }
+      } catch {}
+    })
+  )
+
+  setMentionedUserIds(map)
+}
+
+  const searchMentionUsers = async (query: string) => {
+  if (query.length < 1) {
+    setMentionUsers([])
+    setShowMentionDropdown(false)
+    return
+  }
+  try {
+    const token = localStorage.getItem("token")
+    const response = await fetch(`/api/search/users?q=${encodeURIComponent(query)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (response.ok) {
+      const data = await response.json()
+      setMentionUsers(data.users || [])
+      setShowMentionDropdown((data.users || []).length > 0)
+    }
+  } catch {
+    setShowMentionDropdown(false)
+  }
+}
+
+const renderMentions = (text: string) => {
+  const parts = text.split(/(@\w+)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const username = part.slice(1)
+      const userId = mentionedUserIds[username]
+      if (userId) {
+        return (
+          <Link key={i} href={`/profile/${userId}`} className="text-primary font-semibold hover:underline">
+            {part}
+          </Link>
+        )
+      }
+      return <span key={i} className="text-primary font-semibold">{part}</span>
+    }
+    return part
+  })
+}
+
+const handleBioChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const value = e.target.value
+  const cursorPos = e.target.selectionStart || 0
+  setProfileForm({ ...profileForm, bio: value })
+  setMentionCursorPos(cursorPos)
+
+  const textBeforeCursor = value.slice(0, cursorPos)
+  const mentionMatch = textBeforeCursor.match(/@(\w*)$/)
+  if (mentionMatch) {
+    const query = mentionMatch[1]
+    setMentionQuery(query)
+    searchMentionUsers(query)
+  } else {
+    setShowMentionDropdown(false)
+    setMentionQuery("")
+  }
+}
+
+const insertBioMention = (username: string) => {
+  const bio = profileForm.bio
+  const textBeforeCursor = bio.slice(0, mentionCursorPos)
+  const textAfterCursor = bio.slice(mentionCursorPos)
+  const beforeMention = textBeforeCursor.replace(/@\w*$/, "")
+  setProfileForm({ ...profileForm, bio: `${beforeMention}@${username} ${textAfterCursor}` })
+  setShowMentionDropdown(false)
+  setMentionQuery("")
+}
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -467,15 +571,34 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="bio">Bio</Label>
-                    <Textarea
-                      id="bio"
-                      value={profileForm.bio}
-                      onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
-                      placeholder="Conte um pouco sobre você..."
-                      rows={3}
-                    />
-                  </div>
+  <Label htmlFor="bio">Biografia</Label>
+  <div className="relative">
+    <Textarea
+      id="bio"
+      value={profileForm.bio}
+      onChange={handleBioChange}
+      placeholder="Conte um pouco sobre você... (use @ para mencionar alguém)"
+      rows={3}
+    />
+    {showMentionDropdown && mentionUsers.length > 0 && (
+      <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+        {mentionUsers.map((u) => (
+          <button
+            key={u._id}
+            type="button"
+            className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 transition-colors"
+            onClick={() => insertBioMention(u.username || u.name)}
+          >
+            <span className="font-medium text-sm">{u.name}</span>
+            {u.username && (
+              <span className="text-xs text-muted-foreground">@{u.username}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+</div>
 
                   <Button type="submit" disabled={updating}>
                     {updating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

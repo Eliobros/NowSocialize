@@ -3,7 +3,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { apiGet, apiPost } from '@/services/api';
+import { apiRequest,  apiGet, apiPost } from '@/services/api';
 
 interface UserProfile {
   _id: string;
@@ -40,19 +40,25 @@ export default function UserProfilePage() {
   };
 
   const handleFollow = async () => {
-    if (!profile) return;
-    setFollowLoading(true);
-    try {
-      const response = await apiPost(`/api/profile/${id}/follow`);
-      if (response.ok) {
-        setFollowing(prev => !prev);
-        setProfile(prev => prev ? {
-          ...prev,
-          followers: following ? prev.followers - 1 : prev.followers + 1,
-        } : prev);
-      }
-    } catch {} finally { setFollowLoading(false); }
-  };
+  if (!profile) return;
+  setFollowLoading(true);
+  try {
+    const response = following
+      ? await apiRequest('/api/follow', { 
+          method: 'DELETE', 
+          body: JSON.stringify({ userId: id }) 
+        })
+      : await apiPost('/api/follow', { userId: id });
+
+    if (response.ok) {
+      setFollowing(prev => !prev);
+      setProfile(prev => prev ? {
+        ...prev,
+        followers: following ? prev.followers - 1 : prev.followers + 1,
+      } : prev);
+    }
+  } catch {} finally { setFollowLoading(false); }
+};
 
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 

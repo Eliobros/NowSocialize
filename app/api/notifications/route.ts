@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
             read: 1,
             createdAt: 1,
             postId: 1,
+	    targetUrl: 1,
             "from._id": 1,
             "from.name": 1,
             "from.username": 1,

@@ -257,6 +257,76 @@ export class ConversationKeyManager {
   }
 }
 
+// Armazenamento LOCAL da chave privada — NUNCA sai do dispositivo.
+// Usa IndexedDB porque localStorage tem limite de tamanho e é mais fácil
+// de exportar/copiar acidentalmente. A chave privada não pode, em nenhuma
+// circunstância, ser enviada para o servidor.
+export class PrivateKeyStorage {
+  private static readonly DB_NAME = "socializenow_e2e"
+  private static readonly STORE_NAME = "private_keys"
+  private static readonly DB_VERSION = 1
+
+  private static openDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      if (typeof window === "undefined" || !window.indexedDB) {
+        reject(new Error("IndexedDB não disponível"))
+        return
+      }
+
+      const request = window.indexedDB.open(this.DB_NAME, this.DB_VERSION)
+
+      request.onupgradeneeded = () => {
+        const db = request.result
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME)
+        }
+      }
+
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  // Guarda a chave privada localmente, associada ao userId
+  // (assim, se houver troca de conta no mesmo navegador, não há mistura de chaves)
+  static async savePrivateKey(userId: string, privateKey: string): Promise<void> {
+    const db = await this.openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, "readwrite")
+      tx.objectStore(this.STORE_NAME).put(privateKey, userId)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+
+  static async getPrivateKey(userId: string): Promise<string | null> {
+    const db = await this.openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, "readonly")
+      const request = tx.objectStore(this.STORE_NAME).get(userId)
+      request.onsuccess = () => resolve(request.result ?? null)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  static async hasPrivateKey(userId: string): Promise<boolean> {
+    const key = await this.getPrivateKey(userId).catch(() => null)
+    return key !== null
+  }
+
+  // Usado no logout — a chave privada não deve persistir além da sessão
+  // se o utilizador pedir para "esquecer este dispositivo"
+  static async removePrivateKey(userId: string): Promise<void> {
+    const db = await this.openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, "readwrite")
+      tx.objectStore(this.STORE_NAME).delete(userId)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }
+}
+
 // Interface para mensagem criptografada
 export interface EncryptedMessage {
   content: string // Conteúdo criptografado

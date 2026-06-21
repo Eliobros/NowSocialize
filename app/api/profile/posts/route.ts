@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
             "author.email": 1,
             "author.avatar": 1,
             "author.isVerified": 1,
+	    "author.badgeType": 1
           },
         },
         {

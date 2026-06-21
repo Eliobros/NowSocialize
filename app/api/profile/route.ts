@@ -31,14 +31,12 @@ export async function GET(request: NextRequest) {
     const users = db.collection("users")
     const posts = db.collection("posts")
 
-    // Get user profile
     const userProfile = await users.findOne({ _id: new ObjectId(user.userId) }, { projection: { password: 0 } })
 
     if (!userProfile) {
       return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
     }
 
-    // Count user posts
     const postsCount = await posts.countDocuments({ authorId: new ObjectId(user.userId) })
 
     const profile = {
@@ -77,31 +75,65 @@ export async function PUT(request: NextRequest) {
     const client = await clientPromise
     const db = client.db("socializenow")
     const users = db.collection("users")
+    const notifications = db.collection("notifications")
 
-    // Check if username is already taken (if provided)
+    const userId = new ObjectId(user.userId)
+
     if (username) {
       const existingUser = await users.findOne({
         username,
-        _id: { $ne: new ObjectId(user.userId) },
+        _id: { $ne: userId },
       })
       if (existingUser) {
         return NextResponse.json({ error: "Nome de usuário já está em uso" }, { status: 400 })
       }
     }
 
+    const currentUser = await users.findOne({ _id: userId })
+
     const updateData: any = {
       name,
-      bio: bio || "",
-      avatar: avatar || "",
-      preferredLanguage: preferredLanguage || "",
       updatedAt: new Date(),
     }
 
-    if (username) {
-      updateData.username = username
-    }
+    if (username) updateData.username = username
+    if (bio !== undefined) updateData.bio = bio
+    if (avatar !== undefined) updateData.avatar = avatar
+    if (preferredLanguage !== undefined) updateData.preferredLanguage = preferredLanguage
 
-    await users.updateOne({ _id: new ObjectId(user.userId) }, { $set: updateData })
+    await users.updateOne({ _id: userId }, { $set: updateData })
+
+    if (bio !== undefined) {
+      const extractMentions = (text: string) => {
+        const matches = text.match(/@(\w+)/g) || []
+        return [...new Set(matches.map((m: string) => m.slice(1)))]
+      }
+
+      const oldMentions = extractMentions(currentUser?.bio || "")
+      const newMentions = extractMentions(bio)
+
+      const newlyMentioned = newMentions.filter((u) => !oldMentions.includes(u))
+
+      if (newlyMentioned.length > 0) {
+        const mentionedUsers = await users
+          .find({ username: { $in: newlyMentioned } })
+          .toArray()
+
+        for (const mentionedUser of mentionedUsers) {
+          if (!mentionedUser._id.equals(userId)) {
+            await notifications.insertOne({
+              userId: mentionedUser._id,
+              fromUserId: userId,
+              type: "mention",
+              message: `${name} mencionou você na própria bio`,
+              targetUrl: `/profile/${userId.toString()}`,
+              read: false,
+              createdAt: new Date(),
+            })
+          }
+        }
+      }
+    }
 
     return NextResponse.json({ message: "Perfil atualizado com sucesso" })
   } catch (error) {

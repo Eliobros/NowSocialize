@@ -126,8 +126,11 @@ export function useMessages() {
   }, [])
 
   const addMessage = useCallback((message: Message) => {
-    setMessages(prev => [...prev, message])
-  }, [])
+  setMessages(prev => {
+    if (prev.some(m => m._id === message._id)) return prev
+    return [...prev, message]
+  })
+}, [])
 
   const markConversationRead = useCallback(async (conversationId: string) => {
     try {

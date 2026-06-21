@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Bell, Heart, MessageCircle, UserPlus, Check, Share2, ArrowLeft } from "lucide-react"
+import { Loader2, Bell, Heart, MessageCircle, UserPlus, Check, Share2, ArrowLeft, AtSign } from "lucide-react"
 import { io } from "socket.io-client"
 
 interface Notification {
@@ -167,6 +167,8 @@ export default function NotificationsPage() {
         return <UserPlus className="h-5 w-5 text-green-500" />
       case "share":
         return <Share2 className="h-5 w-5 text-green-500" />
+      case "mention":
+        return <AtSign className="h-5 w-5 text-purple-500" /> 
       default:
         return <Bell className="h-5 w-5 text-muted-foreground" />
     }

@@ -372,16 +372,14 @@ export default function MessagesPage() {
     }
     
     const success = await sendMessage(selectedConversation, content, image, replyingTo?._id, targetLang || currentUserLanguage || undefined)
-    if (success) {
-      setReplyingTo(null)
-      await fetchMessages(selectedConversation)
-      await fetchConversations()
+if (success) {
+  setReplyingTo(null)
+  await fetchConversations()
 
-      // Check for @Tina mention in group chats
-      if (selectedConv?.type === "group" && /@tina/i.test(content)) {
-        handleTinaMention(content, selectedConversation)
-      }
-    }
+  if (selectedConv?.type === "group" && /@tina/i.test(content)) {
+    handleTinaMention(content, selectedConversation)
+  }
+}
     return success
   }
 
