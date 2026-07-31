@@ -25,6 +25,7 @@ interface UseSocketOptions {
 
 export function useSocket(options: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null)
+  const joinedConversationRef = useRef<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
@@ -33,7 +34,7 @@ export function useSocket(options: UseSocketOptions) {
     if (!token || !options.userId) return
 
     // Criar conexão socket
-    socketRef.current = io('https://socket.mozhost.shop', {
+    socketRef.current = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'https://socket.mozhost.shop', {
       transports: ['websocket', 'polling'],
       secure: true,
       reconnection: true,
@@ -52,6 +53,11 @@ export function useSocket(options: UseSocketOptions) {
       
       // Entrar na sala do usuário
       socket.emit('join', options.userId)
+
+      // Re-entrar na conversa atual (após reconexão)
+      if (joinedConversationRef.current) {
+        socket.emit('join_conversation', joinedConversationRef.current)
+      }
     })
 
     socket.on('connect_error', (error) => {
@@ -152,6 +158,7 @@ export function useSocket(options: UseSocketOptions) {
   }, [options.userId])
 
   const joinConversation = (conversationId: string) => {
+    joinedConversationRef.current = conversationId
     if (socketRef.current?.connected) {
       socketRef.current.emit('join_conversation', conversationId)
       console.log('🚪 Entrou na conversa:', conversationId)
@@ -159,6 +166,9 @@ export function useSocket(options: UseSocketOptions) {
   }
 
   const leaveConversation = (conversationId: string) => {
+    if (joinedConversationRef.current === conversationId) {
+      joinedConversationRef.current = null
+    }
     if (socketRef.current?.connected) {
       socketRef.current.emit('leave_conversation', conversationId)
       console.log('🚪 Saiu da conversa:', conversationId)

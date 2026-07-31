@@ -48,6 +48,25 @@ export async function GET(req: Request) {
         console.log(`👋 Socket ${socket.id} saiu da conversa ${conversationId}`)
       })
 
+      // Relay server-to-server (a API conecta aqui como client)
+      socket.on('relay_new_message', (data: any) => {
+        const { conversationId, senderId, message, senderMessage, secret } = data || {}
+        if (!conversationId || !message) return
+
+        const relaySecret = process.env.SOCKET_RELAY_SECRET || process.env.JWT_SECRET
+        if (relaySecret && secret !== relaySecret) {
+          console.log('Relay bloqueado: secret inválido')
+          return
+        }
+
+        // Remetente recebe o ORIGINAL primeiro
+        if (senderId && senderMessage) {
+          io.to(senderId).emit('new_message', senderMessage)
+        }
+        io.to(conversationId).emit('new_message', message)
+        socket.emit('relay_ack')
+      })
+
       // Desconexão
       socket.on('disconnect', () => {
         console.log('🔴 Usuário desconectado:', socket.id)

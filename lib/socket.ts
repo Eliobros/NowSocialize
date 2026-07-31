@@ -5,7 +5,7 @@ class SocketService {
 
   connect(userId: string) {
     if (!this.socket) {
-      this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "https://socket-socializenow.duckdns.org", {
+      this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "https://socket.mozhost.shop", {
         transports: ['websocket', 'polling'],
         secure: true,
         reconnection: true,

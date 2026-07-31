@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import jwt from "jsonwebtoken"
 import clientPromise from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
+import { emitNewMessage } from "@/lib/socket-relay"
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",
@@ -74,6 +75,46 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await messagesCollection.insertOne(audioMessage)
+
+    // Emitir em tempo real via Socket.IO
+    const senderData = await db.collection("users").findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { name: 1, avatar: 1 } }
+    )
+    void emitNewMessage({
+      conversationId,
+      senderId: userId,
+      message: {
+        _id: result.insertedId.toString(),
+        conversationId,
+        type: "audio",
+        audioUrl: audioMessage.audioUrl,
+        duration: duration || 0,
+        content: "",
+        sender: {
+          _id: userId,
+          name: senderData?.name,
+          avatar: senderData?.avatar
+        },
+        createdAt: audioMessage.createdAt.toISOString(),
+        read: false,
+      },
+    })
+
+    // Atualizar a última mensagem da conversa
+    await db.collection("conversations").updateOne(
+      { _id: new ObjectId(conversationId) },
+      {
+        $set: {
+          lastMessage: {
+            content: "🎤 Mensagem de voz",
+            sender: new ObjectId(userId),
+            createdAt: new Date(),
+          },
+          updatedAt: new Date(),
+        },
+      }
+    )
 
     return NextResponse.json({
       success: true,

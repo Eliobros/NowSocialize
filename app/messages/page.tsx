@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Loader2, MessageCircle, Plus, ArrowLeft, Search, Users } from "lucide-react"
+import { Loader2, MessageCircle, Plus, ArrowLeft, Search, Users, Phone } from "lucide-react"
 import { CallManager } from "@/components/call/call-manager"
+import { CallHistory } from "@/components/messages/CallHistory"
 import { CreateGroupModal } from "@/components/groups/CreateGroupModal"
 import { GroupInfoModal } from "@/components/groups/GroupInfoModal"
 import { ConversationList } from "@/components/messages/ConversationList"
@@ -33,6 +34,7 @@ export default function MessagesPage() {
   const [showNewChatDialog, setShowNewChatDialog] = useState(false)
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [showGroupInfo, setShowGroupInfo] = useState(false)
+  const [activeTab, setActiveTab] = useState<"conversas" | "chamadas">("conversas")
   const [isUserScrolling, setIsUserScrolling] = useState(false)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [replyingTo, setReplyingTo] = useState<any>(null)
@@ -91,6 +93,10 @@ export default function MessagesPage() {
     toggleReaction,
     updateMessageReactions
   } = useMessages()
+
+  // Refs to avoid stale closures in socket callbacks
+  const messagesRef = React.useRef(messages)
+  React.useEffect(() => { messagesRef.current = messages }, [messages])
 
   const translateMessages = async (msgs: Message[], targetLang: string) => {
     if (!targetLang) return msgs
@@ -470,6 +476,25 @@ if (success) {
     await fetchMessages(conversationId)
   }
 
+  const handleAudioSent = async (audioUrl: string) => {
+    if (!selectedConversation) return
+
+    // A mensagem já foi salva no banco pela rota /api/audio-upload e o relay
+    // do socket entrega o `new_message` com o id real — se adicionássemos aqui
+    // com um id temporário, o balão apareceria DUPLICADO.
+    await fetchConversations()
+
+    // Segurança: se o eco do socket não chegar (socket fora do ar), busca do
+    // banco para o remetente ver o próprio balão imediatamente.
+    setTimeout(() => {
+      const convId = selectedConversationRef.current
+      const exists = messagesRef.current.some((m) => m.audioUrl === audioUrl)
+      if (!exists && convId) {
+        fetchMessages(convId)
+      }
+    }, 1200)
+  }
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
     const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 50
@@ -619,28 +644,56 @@ if (success) {
               </div>
             </div>
 
-            {/* Search */}
-            <div className="p-3 border-b border-border">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Pesquisar conversas..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-muted/50 border-0 focus-visible:ring-1"
-                />
-              </div>
+            {/* Tabs: Conversas | Chamadas */}
+            <div className="flex items-center gap-1 p-2 border-b border-border">
+              <button
+                onClick={() => setActiveTab("conversas")}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === "conversas" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Conversas
+              </button>
+              <button
+                onClick={() => setActiveTab("chamadas")}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === "chamadas" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                <Phone className="h-4 w-4" />
+                Chamadas
+              </button>
             </div>
 
-            {/* Conversations */}
-            <ConversationList
-              conversations={filteredConversations}
-              selectedConversation={selectedConversation}
-              currentUserId={currentUserId}
-              onSelectConversation={handleSelectConversation}
-              tinaLastMessage={tinaMessages.length > 0 ? tinaMessages[tinaMessages.length - 1].content : undefined}
-              systemLastMessage={systemMessages.length > 0 ? systemMessages[0].content : undefined}
-            />
+            {activeTab === "chamadas" ? (
+              <CallHistory onSelectUser={(userId) => handleStartNewConversation(userId)} />
+            ) : (
+              <>
+                {/* Search */}
+                <div className="p-3 border-b border-border">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Pesquisar conversas..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 bg-muted/50 border-0 focus-visible:ring-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Conversations */}
+                <ConversationList
+                  conversations={filteredConversations}
+                  selectedConversation={selectedConversation}
+                  currentUserId={currentUserId}
+                  onSelectConversation={handleSelectConversation}
+                  tinaLastMessage={tinaMessages.length > 0 ? tinaMessages[tinaMessages.length - 1].content : undefined}
+                  systemLastMessage={systemMessages.length > 0 ? systemMessages[0].content : undefined}
+                />
+              </>
+            )}
           </div>
 
           {/* Main - Chat Window */}
@@ -689,6 +742,8 @@ if (success) {
                 placeholder={isTinaChat ? "Pergunte algo à Tina..." : "Digite sua mensagem..."}
                 replyingTo={isTinaChat ? null : replyingTo}
                 onCancelReply={() => setReplyingTo(null)}
+                conversationId={isTinaChat ? undefined : selectedConversation}
+                onAudioSent={isTinaChat ? undefined : handleAudioSent}
                 onTypingStart={isTinaChat ? undefined : () => startTyping(selectedConversation)}
                 onTypingStop={isTinaChat ? undefined : () => stopTyping(selectedConversation)}
               />

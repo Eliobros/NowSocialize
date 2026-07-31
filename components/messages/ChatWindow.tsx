@@ -8,6 +8,30 @@ import { Message, Conversation } from "@/types/message"
 
 const REACTION_EMOJIS = ["❤️", "😂", "😮", "😢", "😡"]
 
+const TINA_ID = "tina-ia"
+const SYSTEM_ID = "socializenow-system"
+
+const PARTICIPANT_COLORS = [
+  "#8b5cf6",
+  "#ec4899",
+  "#f97316",
+  "#10b981",
+  "#3b82f6",
+  "#ef4444",
+  "#06b6d4",
+  "#84cc16",
+  "#f59e0b",
+  "#a855f7",
+]
+
+function getHashColor(userId: string) {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) >>> 0
+  }
+  return PARTICIPANT_COLORS[hash % PARTICIPANT_COLORS.length]
+}
+
 const LANGUAGES = [
   { code: "", label: "Desativado" },
   { code: "pt", label: "Português" },
@@ -289,6 +313,12 @@ export function ChatWindow({
                   new Date(message.createdAt).getDate()
 
               const isMe = message.sender._id === currentUserId
+              const isTina = message.sender._id === TINA_ID
+              const isSystem = message.sender._id === SYSTEM_ID
+              const isColoredBubble = isMe || isTina || isSystem
+              const senderColor = isGroup && !isMe && !isTina && !isSystem
+                ? getHashColor(message.sender._id)
+                : null
               const showAvatar = !isMe && (
                 index === messages.length - 1 ||
                 messages[index + 1]?.sender._id !== message.sender._id ||
@@ -325,25 +355,32 @@ export function ChatWindow({
                     )}
                     <div className="relative max-w-[75%]">
                       <div
-                        className={`px-3 py-2 ${
+                        className={`px-3 py-2 shadow-sm ${
                           isMe
-                            ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
-                            : "bg-card text-card-foreground border border-border rounded-2xl rounded-bl-md"
+                            ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white rounded-2xl rounded-br-md"
+                            : isTina
+                              ? "bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white rounded-2xl rounded-bl-md"
+                              : isSystem
+                                ? "bg-gradient-to-br from-blue-500 to-cyan-600 text-white rounded-2xl rounded-bl-md"
+                                : senderColor
+                                  ? "text-card-foreground border rounded-2xl rounded-bl-md"
+                                  : "bg-card text-card-foreground border border-border rounded-2xl rounded-bl-md"
                         }`}
+                        style={senderColor ? { backgroundColor: `${senderColor}1A`, borderColor: `${senderColor}40` } : undefined}
                       >
                         {isGroup && !isMe && (
-                          <p className={`text-[11px] font-semibold mb-0.5 ${isMe ? "text-primary-foreground/70" : "text-primary"}`}>
+                          <p className="text-[11px] font-semibold mb-0.5" style={{ color: senderColor || "var(--primary)" }}>
                             {message.sender.name}
                           </p>
                         )}
                         {message.replyTo && (
                           <div className={`mb-1.5 px-2 py-1 rounded border-l-2 ${
-                            isMe ? "border-primary-foreground/40 bg-primary-foreground/10" : "border-primary/40 bg-primary/5"
+                            isColoredBubble ? "border-white/40 bg-white/10" : "border-primary/40 bg-primary/5"
                           }`}>
-                            <p className={`text-[10px] font-semibold ${isMe ? "text-primary-foreground/70" : "text-primary"}`}>
+                            <p className={`text-[10px] font-semibold ${isColoredBubble ? "text-white/80" : "text-primary"}`}>
                               {message.replyTo.sender.name}
                             </p>
-                            <p className={`text-[11px] truncate ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                            <p className={`text-[11px] truncate ${isColoredBubble ? "text-white/70" : "text-muted-foreground"}`}>
                               {message.replyTo.content}
                             </p>
                           </div>
@@ -356,7 +393,22 @@ export function ChatWindow({
                             onClick={() => window.open(message.image, "_blank")}
                           />
                         )}
-                        
+
+                        {message.audioUrl && (
+                          <div className="mb-1.5">
+                            <div className={`flex items-center gap-2 ${isColoredBubble ? "text-white/90" : "text-foreground"}`}>
+                              <span className="text-base">🎤</span>
+                              <span className="text-xs font-medium">Mensagem de voz</span>
+                            </div>
+                            <audio
+                              controls
+                              preload="metadata"
+                              src={message.audioUrl}
+                              className="mt-1 w-full max-w-[240px] h-10 rounded-lg"
+                            />
+                          </div>
+                        )}
+
                         {message.content && (
   <p className="text-sm break-words leading-relaxed">
     
@@ -375,7 +427,7 @@ export function ChatWindow({
                           <button
                             onClick={() => toggleOriginal(message._id)}
                             className={`flex items-center gap-1 mt-1 text-[10px] ${
-                              isMe ? "text-primary-foreground/50 hover:text-primary-foreground/80" : "text-muted-foreground hover:text-foreground"
+                              isColoredBubble ? "text-white/70 hover:text-white" : "text-muted-foreground hover:text-foreground"
                             } transition-colors`}
                           >
                             <Languages className="h-3 w-3" />
@@ -386,12 +438,12 @@ export function ChatWindow({
                           </button>
                         )}
                         <div className={`flex items-center gap-1 mt-1 justify-end`}>
-                          <span className={`text-[10px] ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                          <span className={`text-[10px] ${isColoredBubble ? "text-white/70" : "text-muted-foreground"}`}>
                             {formatTime(message.createdAt)}
                           </span>
                           {/* Read receipt indicators */}
                           {isMe && (
-                            <span className={`flex items-center ${message.read ? "text-blue-400" : isMe ? "text-primary-foreground/40" : "text-muted-foreground/40"}`}>
+                            <span className={`flex items-center ${message.read ? "text-blue-300" : isColoredBubble ? "text-white/50" : "text-muted-foreground/40"}`}>
                               {message.read ? (
                                 <CheckCheck className="h-3.5 w-3.5" />
                               ) : (
@@ -404,7 +456,7 @@ export function ChatWindow({
                         <div className="flex items-center gap-2 mt-0.5">
                           {onReplyMessage && (
                             <button
-                              className={`text-[10px] ${isMe ? "text-primary-foreground/50 hover:text-primary-foreground/80" : "text-muted-foreground hover:text-foreground"}`}
+                              className={`text-[10px] ${isColoredBubble ? "text-white/70 hover:text-white" : "text-muted-foreground hover:text-foreground"}`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 onReplyMessage(message)
@@ -415,7 +467,7 @@ export function ChatWindow({
                           )}
                           {onReaction && (
                             <button
-                              className={`text-[10px] ${isMe ? "text-primary-foreground/50 hover:text-primary-foreground/80" : "text-muted-foreground hover:text-foreground"}`}
+                              className={`text-[10px] ${isColoredBubble ? "text-white/70 hover:text-white" : "text-muted-foreground hover:text-foreground"}`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setShowReactionPicker(showReactionPicker === message._id ? null : message._id)

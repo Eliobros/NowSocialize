@@ -11,6 +11,56 @@ interface CallUser {
   peer?: Peer.Instance
 }
 
+// Servidores ICE configuráveis via variáveis de ambiente:
+// - NEXT_PUBLIC_ICE_SERVERS: JSON array completo (sobrescreve tudo)
+// - NEXT_PUBLIC_TURN_URL [+ _USERNAME/_CREDENTIAL]: adiciona um TURN ao STUN padrão
+function getIceServers(): RTCIceServer[] {
+  const defaultStun: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+  ]
+
+  // Permite sobrescrever TODOS os ICE servers via JSON
+  // (NEXT_PUBLIC_* são substituídos em build-time pelo Next no client)
+  const custom = process.env.NEXT_PUBLIC_ICE_SERVERS
+  if (custom) {
+    try {
+      const parsed = JSON.parse(custom)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    } catch (e) {
+      console.error("NEXT_PUBLIC_ICE_SERVERS inválido (deve ser um JSON array):", e)
+    }
+  }
+
+  // TURN gratuito padrão (Open Relay Project — https://www.metered.ca/tools/openrelay/)
+  // Necessário para conectar em NAT simétrico / redes móveis onde o STUN falha.
+  // Substitua pelas suas credenciais via NEXT_PUBLIC_TURN_URL para produção.
+  const freeTurn: RTCIceServer[] = [
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+  ]
+
+  // TURN configurável via env — tem prioridade sobre o gratuito
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL
+  if (turnUrl) {
+    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME
+    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL
+    const turnServer: RTCIceServer = { urls: turnUrl }
+    if (turnUsername && turnCredential) {
+      turnServer.username = turnUsername
+      turnServer.credential = turnCredential
+    }
+    return [...defaultStun, turnServer]
+  }
+
+  return [...defaultStun, ...freeTurn]
+}
+
 interface UseWebRTCReturn {
   localStream: MediaStream | null
   remoteStreams: Map<string, MediaStream>
@@ -31,6 +81,7 @@ interface UseWebRTCReturn {
     callerName: string
     callId: string
     callType?: "audio" | "video"
+    signal?: any
   } | null
   startCallWithType: (userId: string, userName: string, callType: "audio" | "video") => void
   connectionStatus: "connecting" | "connected" | "disconnected" | "error"
@@ -50,13 +101,14 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     callerName: string
     callId: string
     callType?: "audio" | "video"
+    signal?: any
   } | null>(null)
 
   const peersRef = useRef<Map<string, Peer.Instance>>(new Map())
-  const callTimerRef = useRef<NodeJS.Timeout>()
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const currentCallId = useRef<string>("")
   const callStartTime = useRef<number>(0)
-  const activityTimerRef = useRef<NodeJS.Timeout>()
+  const activityTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
   // Refs para evitar dependências instáveis no endCall
   const participantsRef = useRef<CallUser[]>([])
@@ -149,6 +201,11 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     setIncomingCall(null)
     stopCallTimer()
     currentCallId.current = ""
+
+    // Notifica a aba de histórico de chamadas para atualizar
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("call-history-refresh"))
+    }
   }, [stopCallTimer, setLocalStreamWithRef, setParticipantsWithRef])
 
   useEffect(() => {
@@ -170,11 +227,23 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     })
 
     socket.on("incoming-call", (data) => {
-      setIncomingCall(data)
+      // Ignora chamadas novas enquanto já estiver em uma chamada ativa
+      // (evita o modal reaparecer se o peer do chamador reconectar via call-user)
+      if (currentCallId.current) return
+
+      // Guarda também a oferta (signal) para o acceptCall poder aplicar peer.signal(offer)
+      setIncomingCall({
+        from: data.from,
+        callerName: data.callerName,
+        callId: data.callId,
+        callType: data.callType,
+        signal: data.signal,
+      })
     })
 
     socket.on("call-accepted", (data) => {
-      const peer = peersRef.current.get(data.callId)
+      // peersRef é chaveado por userId — o servidor envia `from` (userId de quem aceitou)
+      const peer = peersRef.current.get(data.from)
       if (peer) {
         peer.signal(data.signal)
       }
@@ -261,25 +330,42 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
   }, [setLocalStreamWithRef])
 
   const createPeer = useCallback(
-    (userId: string, initiator: boolean, stream: MediaStream) => {
+    (
+      userId: string,
+      initiator: boolean,
+      stream: MediaStream,
+      emitMode: "call-user" | "accept-call" | "webrtc-signal" = "webrtc-signal",
+      callType: "audio" | "video" = "video",
+    ) => {
       const peer = new Peer({
         initiator,
         trickle: false,
         stream,
         config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun3.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:19302" },
-          ],
+          iceServers: getIceServers(),
         },
       })
 
       peer.on("signal", (signal) => {
         const socket = socketService.getSocket()
-        if (socket?.connected) {
+        if (!socket?.connected) return
+
+        if (emitMode === "call-user") {
+          socket.emit("call-user", {
+            to: userId,
+            from: currentUserId,
+            signal,
+            callerName: currentUserName,
+            callType,
+            callId: currentCallId.current,
+          })
+        } else if (emitMode === "accept-call") {
+          socket.emit("accept-call", {
+            to: userId,
+            signal,
+            callId: currentCallId.current,
+          })
+        } else {
           socket.emit("webrtc-signal", {
             to: userId,
             signal,
@@ -304,7 +390,9 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
         console.error(`Peer connection error with ${userId}:`, error)
         setTimeout(() => {
           if (peersRef.current.has(userId)) {
-            const newPeer = createPeer(userId, initiator, stream)
+            // Recria para reconexão: sinais fluem via webrtc-signal (renovação de sessão),
+            // sem disparar call-user/incoming-call novamente
+            const newPeer = createPeer(userId, initiator, stream, "webrtc-signal", callType)
             peersRef.current.set(userId, newPeer)
           }
         }, 2000)
@@ -323,7 +411,7 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       peersRef.current.set(userId, peer)
       return peer
     },
-    []
+    [currentUserId, currentUserName]
   )
 
   const startCall = useCallback(
@@ -335,20 +423,7 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       }
 
       currentCallId.current = `${currentUserId}-${userId}-${Date.now()}`
-      const peer = createPeer(userId, true, stream)
-
-      peer.on("signal", (signal) => {
-        const socket = socketService.getSocket()
-        if (socket?.connected) {
-          socket.emit("call-user", {
-            to: userId,
-            from: currentUserId,
-            signal,
-            callerName: currentUserName,
-            callType: "video",
-          })
-        }
-      })
+      createPeer(userId, true, stream, "call-user", "video")
 
       setIsCallActive(true)
       setParticipantsWithRef([{ userId, name: userName }])
@@ -365,20 +440,7 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
       }
 
       currentCallId.current = `${currentUserId}-${userId}-${Date.now()}`
-      const peer = createPeer(userId, true, stream)
-
-      peer.on("signal", (signal) => {
-        const socket = socketService.getSocket()
-        if (socket?.connected) {
-          socket.emit("call-user", {
-            to: userId,
-            from: currentUserId,
-            signal,
-            callerName: currentUserName,
-            callType,
-          })
-        }
-      })
+      createPeer(userId, true, stream, "call-user", callType)
 
       setIsCallActive(true)
       setParticipantsWithRef([{ userId, name: userName }])
@@ -397,24 +459,34 @@ export function useWebRTC(currentUserId: string, currentUserName: string): UseWe
     }
 
     currentCallId.current = incomingCall.callId
-    const peer = createPeer(incomingCall.from, false, stream)
+    const peer = createPeer(incomingCall.from, false, stream, "accept-call")
 
-    peer.on("signal", (signal) => {
-      const socket = socketService.getSocket()
-      if (socket?.connected) {
-        socket.emit("accept-call", {
-          to: incomingCall.from,
-          signal,
-          callId: incomingCall.callId,
-        })
+    // CRÍTICO: o simple-peer com initiator:false PRECISA receber a oferta do chamador
+    // via peer.signal(). Sem isso ele nunca gera a resposta e a chamada fica travada
+    // em "conectando..." para sempre.
+    if (incomingCall.signal) {
+      try {
+        peer.signal(incomingCall.signal)
+      } catch (error) {
+        console.error("Erro ao aplicar a oferta recebida:", error)
+        // Sem oferta válida não há conexão possível — avisa o chamador e encerra
+        const socket = socketService.getSocket()
+        if (socket?.connected) {
+          socket.emit("reject-call", {
+            to: incomingCall.from,
+            callId: incomingCall.callId,
+          })
+        }
+        endCall()
+        return
       }
-    })
+    }
 
     setIsCallActive(true)
     setParticipantsWithRef([{ userId: incomingCall.from, name: incomingCall.callerName }])
     setIncomingCall(null)
     startCallTimer()
-  }, [incomingCall, getUserMedia, createPeer, startCallTimer, setParticipantsWithRef])
+  }, [incomingCall, getUserMedia, createPeer, startCallTimer, endCall, setParticipantsWithRef])
 
   const rejectCall = useCallback(() => {
     if (!incomingCall) return

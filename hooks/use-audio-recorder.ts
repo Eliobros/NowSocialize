@@ -23,17 +23,28 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number>(0)
+  const audioTypeRef = useRef<string>("audio/webm")
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm;codecs=opus",
-      })
+      // Compatibilidade entre navegadores: Safari não suporta WebM/Opus
+      const supportedType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+            ? "audio/ogg;codecs=opus"
+            : ""
+      audioTypeRef.current = supportedType || "audio/webm"
+
+      const mediaRecorder = supportedType
+        ? new MediaRecorder(stream, { mimeType: supportedType })
+        : new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
 
       const chunks: Blob[] = []
@@ -44,7 +55,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       }
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: "audio/webm" })
+        const blob = new Blob(chunks, { type: mediaRecorder.mimeType || audioTypeRef.current || "audio/webm" })
         setAudioBlob(blob)
         
         // Stop all tracks
@@ -137,12 +148,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
       const { uploadUrl, audioUrl } = await response.json()
 
-      // Upload audio to S3
+      // Upload audio to S3 (usa o tipo real do blob para Safari/outros navegadores)
       const uploadResponse = await fetch(uploadUrl, {
         method: "PUT",
         body: audioBlob,
         headers: {
-          "Content-Type": "audio/webm",
+          "Content-Type": audioBlob.type || "audio/webm",
         },
       })
 

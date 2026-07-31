@@ -41,7 +41,7 @@ export default function NotificationsPage() {
     fetchNotifications()
 
     // Notificações em tempo real via Socket.IO
-    const socket = io('https://socket-socializenow.duckdns.org', {
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'https://socket.mozhost.shop', {
       transports: ['websocket', 'polling'],
       auth: { token }
     })

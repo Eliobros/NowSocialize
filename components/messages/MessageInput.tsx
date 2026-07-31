@@ -3,10 +3,13 @@
 import React, { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Camera, Send, X, Loader2, Smile } from "lucide-react"
+import { Camera, Mic, Send, X, Loader2, Smile } from "lucide-react"
+import { AudioRecorder } from "@/components/audio-recorder"
 
 interface MessageInputProps {
   onSendMessage: (content: string, image?: File, targetLang?: string) => Promise<boolean>
+  onAudioSent?: (audioUrl: string) => void
+  conversationId?: string
   preferredLanguage?: string
   disabled?: boolean
   placeholder?: string
@@ -22,6 +25,8 @@ interface MessageInputProps {
 
 export function MessageInput({
   onSendMessage,
+  onAudioSent,
+  conversationId,
   disabled = false,
   placeholder = "Digite sua mensagem...",
   replyingTo,
@@ -34,8 +39,9 @@ export function MessageInput({
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isTypingRef = useRef(false)
 
   const handleTyping = useCallback(() => {
@@ -159,6 +165,20 @@ export function MessageInput({
         </div>
       )}
 
+      {showAudioRecorder && conversationId && onAudioSent && (
+        <div className="mb-2">
+          <AudioRecorder
+            conversationId={conversationId}
+            onAudioSent={(audioUrl) => {
+              onAudioSent(audioUrl)
+              setShowAudioRecorder(false)
+            }}
+            onCancel={() => setShowAudioRecorder(false)}
+          />
+        </div>
+      )}
+
+      {!showAudioRecorder && (
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <input
           ref={fileInputRef}
@@ -177,6 +197,18 @@ export function MessageInput({
           disabled={disabled}
         >
           <Camera className="h-5 w-5" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-9 w-9 p-0 rounded-full flex-shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={() => setShowAudioRecorder(true)}
+          disabled={disabled || !conversationId || !onAudioSent}
+          title="Gravar mensagem de voz"
+        >
+          <Mic className="h-5 w-5" />
         </Button>
 
         <div className="flex-1 relative">
@@ -203,6 +235,7 @@ export function MessageInput({
           )}
         </Button>
       </form>
+      )}
     </div>
   )
 }
