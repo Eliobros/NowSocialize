@@ -4,10 +4,15 @@ import { compare } from "bcrypt"
 import type { User } from "@/types/user"
 import jwt from "jsonwebtoken"
 
-const JWT_SECRET = process.env.JWT_SECRET || "secret"
+const JWT_SECRET = process.env.JWT_SECRET
 
 export async function POST(req: NextRequest) {
   try {
+    if (!JWT_SECRET) {
+      console.error("JWT_SECRET não configurado no ambiente")
+      return NextResponse.json({ message: "Erro de configuração do servidor" }, { status: 500 })
+    }
+
     const body = await req.json()
     const { email, password } = body
 

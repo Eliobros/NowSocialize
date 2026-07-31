@@ -8,6 +8,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { VideoIcon, X, Loader2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 
+// TROCA AQUI pelo teu cloud name do Cloudinary (Dashboard -> Settings -> Account)
+const CLOUDINARY_CLOUD_NAME = "dfgwgf8su"
+const CLOUDINARY_UPLOAD_PRESET = "socializenow"
+
 interface CreateReelDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -20,6 +24,7 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
   const [videoPreview, setVideoPreview] = useState<string | null>(null)
   const [videoDuration, setVideoDuration] = useState<number>(0)
   const [creating, setCreating] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [error, setError] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -33,8 +38,8 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
       return
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-      setError("O vídeo deve ter no máximo 50MB")
+    if (file.size > 100 * 1024 * 1024) {
+      setError("O vídeo deve ter no máximo 100MB")
       return
     }
 
@@ -70,6 +75,39 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
+  // Faz upload do vídeo DIRETO para o Cloudinary, sem passar pelo backend.
+  // Isso evita o limite de 4.5MB de body das serverless functions do Vercel.
+  const uploadVideoToCloudinary = (file: File): Promise<{ videoUrl: string; publicId: string }> => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
+      formData.append("folder", "reels")
+      formData.append("resource_type", "video")
+
+      const xhr = new XMLHttpRequest()
+      xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`)
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          setUploadProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const data = JSON.parse(xhr.responseText)
+          resolve({ videoUrl: data.secure_url, publicId: data.public_id })
+        } else {
+          reject(new Error("Falha no upload do vídeo para o Cloudinary"))
+        }
+      }
+
+      xhr.onerror = () => reject(new Error("Erro de conexão durante o upload do vídeo"))
+      xhr.send(formData)
+    })
+  }
+
   const handleCreateReel = async () => {
     if (!selectedVideo || videoDuration === 0 || videoDuration > 90) {
       setError("Selecione um vídeo válido para o reel (máx. 1m 30s).")
@@ -78,20 +116,27 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
 
     setCreating(true)
     setError("")
+    setUploadProgress(0)
 
     try {
       const token = localStorage.getItem("token")
-      const formData = new FormData()
-      formData.append("content", content)
-      formData.append("video", selectedVideo)
-      formData.append("duration", videoDuration.toString())
 
+      // 1. Upload direto para o Cloudinary (arquivo pesado)
+      const { videoUrl, publicId } = await uploadVideoToCloudinary(selectedVideo)
+
+      // 2. Envia só os dados leves (texto) para a nossa API salvar no banco
       const response = await fetch("/api/reels", {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: formData,
+        body: JSON.stringify({
+          content,
+          videoUrl,
+          publicId,
+          duration: videoDuration,
+        }),
       })
 
       if (response.ok) {
@@ -121,6 +166,7 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
       })
     } finally {
       setCreating(false)
+      setUploadProgress(0)
     }
   }
 
@@ -173,7 +219,16 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
                 <VideoIcon className="h-5 w-5" />
                 Selecionar Vídeo
               </Button>
-              <p className="text-sm text-gray-500 mt-2">Selecione um vídeo para seu reel (máx. 1m 30s, 50MB)</p>
+              <p className="text-sm text-gray-500 mt-2">Selecione um vídeo para seu reel (máx. 1m 30s, 100MB)</p>
+            </div>
+          )}
+
+          {creating && uploadProgress > 0 && (
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-primary h-2 rounded-full transition-all"
+                style={{ width: `${uploadProgress}%` }}
+              />
             </div>
           )}
 
@@ -187,7 +242,7 @@ export function CreateReelDialog({ open, onOpenChange, onReelCreated }: CreateRe
               className="flex-1"
             >
               {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Publicar
+              {creating ? (uploadProgress > 0 ? `Enviando ${uploadProgress}%` : "Publicando...") : "Publicar"}
             </Button>
           </div>
         </div>

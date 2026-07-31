@@ -82,6 +82,10 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Criar novo reel
+// IMPORTANTE: o upload do vídeo para o Cloudinary agora acontece NO FRONTEND,
+// direto do navegador do usuário. Esta rota só recebe a URL final (texto leve)
+// e salva no banco. Isso evita o limite de 4.5MB de body das serverless
+// functions do Vercel, que causava o erro 413.
 export async function POST(request: NextRequest) {
   try {
     const user = verifyToken(request)
@@ -89,60 +93,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    const formData = await request.formData()
-    const content = (formData.get("content") as string) || ""
-    const video = formData.get("video") as File
-    const duration = Number.parseFloat(formData.get("duration") as string)
+    const body = await request.json()
+    const content = (body.content as string) || ""
+    const videoUrl = body.videoUrl as string
+    const publicId = body.publicId as string
+    const duration = Number.parseFloat(body.duration)
 
-    if (!video) {
+    if (!videoUrl || !publicId) {
       return NextResponse.json({ error: "Vídeo é obrigatório" }, { status: 400 })
     }
 
-    if (video.size > 100 * 1024 * 1024) {
-      // Cloudinary free tier suporta até 100MB
-      return NextResponse.json({ error: "O vídeo deve ter no máximo 100MB" }, { status: 400 })
-    }
-
     if (isNaN(duration) || duration <= 0 || duration > 90) {
-      return NextResponse.json({ error: "Duração do vídeo inválida ou excede 1 minuto e 30 segundos" }, { status: 400 })
-    }
-
-    let videoUrl: string
-    let publicId: string
-
-    try {
-      // Converte o arquivo para base64
-      const bytes = await video.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      const base64Video = `data:${video.type};base64,${buffer.toString('base64')}`
-
-      // Upload para o Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(base64Video, {
-        resource_type: 'video',
-        folder: 'reels', // Organiza em pasta
-        public_id: `${user.userId}_${Date.now()}`, // Nome único
-        transformation: [
-          { quality: 'auto', fetch_format: 'auto' }, // Otimização automática
-        ],
-        // Opções adicionais para melhor performance
-        eager: [
-          { streaming_profile: 'hd', format: 'm3u8' }, // Streaming adaptativo
-        ],
-        eager_async: true, // Processa em background
-      })
-
-      videoUrl = uploadResult.secure_url
-      publicId = uploadResult.public_id
-
-      console.log('Upload bem-sucedido:', {
-        url: videoUrl,
-        publicId: publicId,
-        format: uploadResult.format,
-        duration: uploadResult.duration,
-      })
-    } catch (error) {
-      console.error("Erro no upload do vídeo para Cloudinary:", error)
-      return NextResponse.json({ error: "Erro ao fazer upload do vídeo" }, { status: 500 })
+      return NextResponse.json(
+        { error: "Duração do vídeo inválida ou excede 1 minuto e 30 segundos" },
+        { status: 400 },
+      )
     }
 
     const client = await clientPromise
@@ -153,7 +118,7 @@ export async function POST(request: NextRequest) {
       authorId: new ObjectId(user.userId),
       content: content.trim(),
       videoUrl: videoUrl,
-      publicId: publicId, // Salva o publicId para deletar depois se necessário
+      publicId: publicId,
       duration: duration,
       views: [],
       likes: [],
@@ -171,7 +136,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Deletar reel (opcional, mas útil)
+// DELETE - Deletar reel
 export async function DELETE(request: NextRequest) {
   try {
     const user = verifyToken(request)
@@ -190,7 +155,6 @@ export async function DELETE(request: NextRequest) {
     const db = client.db("socializenow")
     const reelsCollection = db.collection("reels")
 
-    // Busca o reel para verificar permissão e obter publicId
     const reel = await reelsCollection.findOne({ _id: new ObjectId(reelId) })
 
     if (!reel) {
@@ -201,16 +165,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Sem permissão para deletar este reel" }, { status: 403 })
     }
 
-    // Deleta o vídeo do Cloudinary
     if (reel.publicId) {
       try {
-        await cloudinary.uploader.destroy(reel.publicId, { resource_type: 'video' })
+        await cloudinary.uploader.destroy(reel.publicId, { resource_type: "video" })
       } catch (error) {
         console.error("Erro ao deletar vídeo do Cloudinary:", error)
       }
     }
 
-    // Deleta o reel do banco
     await reelsCollection.deleteOne({ _id: new ObjectId(reelId) })
 
     return NextResponse.json({ message: "Reel deletado com sucesso" })

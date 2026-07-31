@@ -1,27 +1,77 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { isAuthenticated } from '@/services/auth';
+import { API_BASE_URL } from '@/constants/api';
+import { getToken, removeToken } from '@/services/storage';
 
 export default function WelcomePage() {
   const router = useRouter();
+  const [validating, setValidating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
   }, []);
 
+  // Usa fetch cru (sem passar pelo interceptor) para evitar auto-redirect
+  // para a rota '/' enquanto já estamos nela (potencial loop).
   const checkAuth = async () => {
-    const authenticated = await isAuthenticated();
-    if (authenticated) {
-      router.replace('/(tabs)/feed');
+    const token = await getToken();
+    if (!token) return;
+
+    setValidating(true);
+    setValidationError(null);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/me`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal: controller.signal,
+      });
+      if (res.ok) {
+        router.replace('/(tabs)/feed');
+        return;
+      }
+      if (res.status === 401) {
+        // Token genuinamente inválido/expirado -> limpa e fica na welcome.
+        await removeToken();
+        return;
+      }
+      // Outros não-ok (500, 503): mantém o token e mostra erro.
+      setValidationError('Não foi possível validar sua sessão. Tente novamente.');
+    } catch (err: any) {
+      // Sem rede / timeout / servidor offline -> NÃO redirecionar ao feed
+      // (isso recriaria o sintoma original do usuário: feed vazio/quebrado).
+      // Apenas mostra o erro e fica na welcome para o usuário decidir.
+      if (err?.name === 'AbortError') {
+        setValidationError('Servidor demorou demais para responder. Tente novamente.');
+      } else {
+        setValidationError('Sem conexão com o servidor. Tente novamente.');
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setValidating(false);
     }
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
+        {validating ? (
+          <View style={styles.validatingBanner}>
+            <Text style={styles.validatingText}>Validando sessão…</Text>
+          </View>
+        ) : null}
+        {validationError ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{validationError}</Text>
+            <TouchableOpacity style={styles.errorRetryBtn} onPress={checkAuth}>
+              <Text style={styles.errorRetryText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <Text style={styles.title}>
           Socialize<Text style={styles.titleHighlight}>Now</Text>
         </Text>
@@ -47,10 +97,18 @@ export default function WelcomePage() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={() => router.push('/register')}>
+        <TouchableOpacity
+          style={[styles.primaryButton, validating && styles.disabledButton]}
+          onPress={() => router.push('/register')}
+          disabled={validating}
+        >
           <Text style={styles.primaryButtonText}>Criar Conta</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push('/login')}>
+        <TouchableOpacity
+          style={[styles.secondaryButton, validating && styles.disabledButton]}
+          onPress={() => router.push('/login')}
+          disabled={validating}
+        >
           <Text style={styles.secondaryButtonText}>Fazer Login</Text>
         </TouchableOpacity>
       </View>
@@ -131,4 +189,45 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  validatingBanner: {
+    backgroundColor: '#DBEAFE',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  validatingText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  errorBannerText: {
+    color: Colors.error,
+    fontSize: 13,
+    flex: 1,
+  },
+  errorRetryBtn: {
+    backgroundColor: Colors.error,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  errorRetryText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  disabledButton: { opacity: 0.5 },
 });

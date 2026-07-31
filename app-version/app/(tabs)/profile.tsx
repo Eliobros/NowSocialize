@@ -24,18 +24,23 @@ export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => { fetchProfile(); }, []);
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (isRetry = false) => {
+    if (isRetry) setRetrying(true);
     try {
       const response = await apiGet('/api/profile');
       if (response.ok) {
         const data = await response.json();
         setProfile(data.profile);
       }
-    } catch {} finally { setLoading(false); }
+    } catch {} finally {
+      setLoading(false);
+      setRetrying(false);
+    }
   };
 
   const handleAvatarUpload = async () => {
@@ -66,7 +71,39 @@ export default function ProfilePage() {
 
   if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={Colors.primary} /></View>;
 
-  if (!profile) return <View style={styles.loadingContainer}><Text>Erro ao carregar perfil</Text></View>;
+  if (!profile) return (
+    <View style={styles.errorContainer}>
+      <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
+      <Text style={styles.errorTitle}>Erro ao carregar perfil</Text>
+      <Text style={styles.errorSubtitle}>
+        Sua sessão pode ter expirado ou há um problema de conexão.
+      </Text>
+      <View style={styles.errorActions}>
+        <TouchableOpacity
+          style={[styles.retryButton, retrying && styles.retryButtonDisabled]}
+          onPress={() => fetchProfile(true)}
+          disabled={retrying}
+        >
+          {retrying ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name="refresh" size={18} color={Colors.white} />
+              <Text style={styles.retryButtonText}>Tentar novamente</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          disabled={retrying}
+        >
+          <Ionicons name="log-out-outline" size={18} color={Colors.error} />
+          <Text style={styles.logoutButtonText}>Sair e entrar novamente</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -149,6 +186,15 @@ export default function ProfilePage() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background, padding: 24 },
+  errorTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text, marginTop: 12, textAlign: 'center' },
+  errorSubtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: 6, textAlign: 'center', lineHeight: 20 },
+  errorActions: { marginTop: 24, gap: 12, width: '100%', maxWidth: 320 },
+  retryButton: { flexDirection: 'row', backgroundColor: Colors.primary, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  retryButtonText: { color: Colors.white, fontWeight: '600', fontSize: 15 },
+  retryButtonDisabled: { opacity: 0.7 },
+  logoutButton: { flexDirection: 'row', borderWidth: 1, borderColor: Colors.error, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  logoutButtonText: { color: Colors.error, fontWeight: '600', fontSize: 15 },
   topBar: { backgroundColor: Colors.white, paddingTop: 50, paddingBottom: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: Colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   topBarTitle: { fontSize: 24, fontWeight: 'bold', color: Colors.text },
   topBarActions: { flexDirection: 'row', gap: 16 },

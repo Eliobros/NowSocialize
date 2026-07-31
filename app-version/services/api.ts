@@ -1,10 +1,47 @@
 import { API_BASE_URL } from '@/constants/api';
-import { getToken } from './storage';
+import { getToken, removeToken } from './storage';
+import { router } from 'expo-router';
 
 interface RequestOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: any;
+}
+
+// Gate baseado em Promise: chamadas 401 concorrentes aguardam a mesma Promise
+// em vôo. Elimina o duplo replace() E o duplo removeToken() sem depender de
+// timers mágicos (resolve somente após o fluxo terminar de verdade).
+let ongoingLogout: Promise<void> | null = null;
+
+function handleUnauthorized() {
+  if (ongoingLogout) return ongoingLogout;
+  ongoingLogout = (async () => {
+    try {
+      if (!(await getToken())) return; // já deslogado
+      await removeToken();
+      try {
+        router.replace('/');
+      } catch {
+        // router pode não estar montado (chamada durante bootstrap);
+        // o token já foi removido, então a próxima navegação cai no welcome.
+      }
+    } catch (err) {
+      if (__DEV__) console.warn('[api] Falha ao processar 401:', err);
+      throw err;
+    }
+  })();
+  // Garante que a próxima chamada após esta ver `ongoingLogout = null` apenas
+  // quando o fluxo de fato concluiu. `.catch` defensivo para evitar unhandled
+  // rejection caso o IIFE interno lance fora do try/catch, mantendo diagnóstico
+  // em dev para regressões futuras.
+  ongoingLogout
+    .finally(() => {
+      ongoingLogout = null;
+    })
+    .catch((err) => {
+      if (__DEV__) console.warn('[api] logout handler rejeitou:', err);
+    });
+  return ongoingLogout;
 }
 
 export async function apiRequest(endpoint: string, options: RequestOptions = {}) {
@@ -30,6 +67,12 @@ export async function apiRequest(endpoint: string, options: RequestOptions = {})
         ? JSON.stringify(options.body)
         : undefined,
   });
+
+  // Sessão expirada / token inválido -> desloga automaticamente
+  if (response.status === 401) {
+    if (__DEV__) console.warn('[api] 401 recebido em', endpoint);
+    handleUnauthorized();
+  }
 
   return response;
 }
