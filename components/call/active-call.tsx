@@ -114,7 +114,9 @@ function VideoTile({
   return (
     <div
       onClick={onClick}
-      className={`relative overflow-hidden bg-slate-900 ${onClick ? "cursor-pointer" : ""} ${className}`}
+      className={`${className.includes("absolute") ? "" : "relative"} overflow-hidden bg-slate-900 ${
+        onClick ? "cursor-pointer" : ""
+      } ${className}`}
     >
       {/* O <video> fica sempre montado para o áudio do outro lado nunca cortar */}
       <video
