@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Phone, Mic, MicOff, Video, VideoOff, UserPlus, Maximize2, Wifi, WifiOff, AlertCircle } from "lucide-react"
+import { Phone, Mic, MicOff, Video, VideoOff, UserPlus, Maximize2, Minimize2, Wifi, WifiOff, AlertCircle } from "lucide-react"
 
 interface Participant {
   userId: string
@@ -25,6 +25,141 @@ interface ActiveCallProps {
   onAddParticipant: () => void
 }
 
+const getInitials = (name: string) =>
+  name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
+
+const formatDuration = (seconds: number) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+}
+
+// Detecta se o stream tem um vídeo ativo (câmera ligada)
+function useHasVideo(stream?: MediaStream | null) {
+  const [hasVideo, setHasVideo] = useState(false)
+
+  useEffect(() => {
+    if (!stream) {
+      setHasVideo(false)
+      return
+    }
+
+    const check = () =>
+      setHasVideo(stream.getVideoTracks().some((t) => t.enabled && !t.muted && t.readyState === "live"))
+
+    check()
+    const tracks = stream.getVideoTracks()
+    tracks.forEach((t) => {
+      t.addEventListener("mute", check)
+      t.addEventListener("unmute", check)
+      t.addEventListener("ended", check)
+    })
+    stream.addEventListener("addtrack", check)
+    stream.addEventListener("removetrack", check)
+
+    return () => {
+      tracks.forEach((t) => {
+        t.removeEventListener("mute", check)
+        t.removeEventListener("unmute", check)
+        t.removeEventListener("ended", check)
+      })
+      stream.removeEventListener("addtrack", check)
+      stream.removeEventListener("removetrack", check)
+    }
+  }, [stream])
+
+  return hasVideo
+}
+
+interface TileProps {
+  stream?: MediaStream | null
+  name: string
+  isLocal?: boolean
+  isMuted?: boolean
+  cameraOn?: boolean // para o local, vem de isVideoEnabled
+  avatarSize?: "sm" | "lg"
+  showLabel?: boolean
+  className?: string
+  onClick?: () => void
+}
+
+// Fica FORA do ActiveCall: se ficasse dentro, o React recriaria o <video> a cada render
+function VideoTile({
+  stream,
+  name,
+  isLocal = false,
+  isMuted = false,
+  cameraOn,
+  avatarSize = "lg",
+  showLabel = true,
+  className = "",
+  onClick,
+}: TileProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamHasVideo = useHasVideo(stream)
+  const showVideo = !!stream && (cameraOn ?? streamHasVideo)
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (el && stream && el.srcObject !== stream) {
+      el.srcObject = stream
+    }
+  }, [stream])
+
+  return (
+    <div
+      onClick={onClick}
+      className={`relative overflow-hidden bg-slate-900 ${onClick ? "cursor-pointer" : ""} ${className}`}
+    >
+      {/* O <video> fica sempre montado para o áudio do outro lado nunca cortar */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={isLocal}
+        className={`absolute inset-0 h-full w-full object-cover ${isLocal ? "-scale-x-100" : ""} ${
+          showVideo ? "opacity-100" : "opacity-0"
+        }`}
+      />
+
+      {!showVideo && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Avatar className={avatarSize === "lg" ? "h-28 w-28" : "h-12 w-12"}>
+            <AvatarFallback
+              className={`bg-blue-600 text-white ${avatarSize === "lg" ? "text-4xl" : "text-base"}`}
+            >
+              {getInitials(name)}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+      )}
+
+      {showLabel && (
+        <div className="absolute bottom-2 left-2 max-w-[70%] truncate rounded-md bg-black/50 px-2 py-1 text-sm text-white">
+          {name}
+        </div>
+      )}
+
+      {isLocal && isMuted && (
+        <div className="absolute right-1.5 top-1.5 rounded-full bg-red-500 p-1 text-white">
+          <MicOff className="h-3.5 w-3.5" />
+        </div>
+      )}
+
+      {!stream && !isLocal && (
+        <div className="absolute right-2 top-2 rounded-full bg-yellow-500 p-1 text-white">
+          <AlertCircle className="h-4 w-4" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ActiveCall({
   participants,
   localStream,
@@ -38,174 +173,163 @@ export function ActiveCall({
   onToggleVideo,
   onAddParticipant,
 }: ActiveCallProps) {
-  const localVideoRef = useRef<HTMLVideoElement>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [swapped, setSwapped] = useState(false) // toque no PiP troca quem fica em tela cheia
+
+  const isOneOnOne = participants.length === 1
+  const callDisabled = connectionStatus === "disconnected" || connectionStatus === "error"
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        await document.exitFullscreen()
+        setIsFullscreen(false)
+      }
+    } catch {
+      setIsFullscreen((v) => !v)
+    }
+  }
 
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream
-    }
-  }, [localStream])
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener("fullscreenchange", onChange)
+    return () => document.removeEventListener("fullscreenchange", onChange)
+  }, [])
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
-  }
+  const statusIcon = {
+    connected: <Wifi className="h-4 w-4 text-green-500" />,
+    connecting: <Wifi className="h-4 w-4 animate-pulse text-yellow-500" />,
+    disconnected: <WifiOff className="h-4 w-4 text-red-500" />,
+    error: <WifiOff className="h-4 w-4 text-red-500" />,
+  }[connectionStatus]
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
-  }
+  const statusText = {
+    connected: "Conectado",
+    connecting: "Conectando...",
+    disconnected: "Desconectado",
+    error: "Erro de conexão",
+  }[connectionStatus]
 
-  const getConnectionStatusIcon = () => {
-    switch (connectionStatus) {
-      case "connected":
-        return <Wifi className="h-4 w-4 text-green-500" />
-      case "connecting":
-        return <Wifi className="h-4 w-4 text-yellow-500 animate-pulse" />
-      case "disconnected":
-      case "error":
-        return <WifiOff className="h-4 w-4 text-red-500" />
-      default:
-        return <Wifi className="h-4 w-4 text-gray-500" />
-    }
-  }
-
-  const getConnectionStatusText = () => {
-    switch (connectionStatus) {
-      case "connected":
-        return "Conectado"
-      case "connecting":
-        return "Conectando..."
-      case "disconnected":
-        return "Desconectado"
-      case "error":
-        return "Erro de conexão"
-      default:
-        return "Desconhecido"
-    }
-  }
-
-  const VideoStream = ({
-    stream,
-    name,
-    isLocal = false,
-  }: { stream?: MediaStream; name: string; isLocal?: boolean }) => {
-    const videoRef = useRef<HTMLVideoElement>(null)
-
-    useEffect(() => {
-      if (videoRef.current && stream) {
-        videoRef.current.srcObject = stream
-      }
-    }, [stream])
-
-    return (
-      <div
-        className={`relative rounded-lg overflow-hidden bg-gray-900 ${
-          participants.length === 1 ? "aspect-video" : "aspect-square"
-        }`}
-      >
-        {stream && isVideoEnabled ? (
-          <video ref={videoRef} autoPlay playsInline muted={isLocal} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Avatar className="h-16 w-16">
-              <AvatarFallback className="bg-blue-600 text-white text-xl">{getInitials(name)}</AvatarFallback>
-            </Avatar>
-          </div>
-        )}
-        <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2 py-1 rounded text-sm">
-          {name} {isLocal && "(Você)"}
-        </div>
-        {isLocal && isMuted && (
-          <div className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded">
-            <MicOff className="h-4 w-4" />
-          </div>
-        )}
-        {!stream && !isLocal && (
-          <div className="absolute top-2 right-2 bg-yellow-500 text-white p-1 rounded">
-            <AlertCircle className="h-4 w-4" />
-          </div>
-        )}
-      </div>
-    )
-  }
+  const remote = isOneOnOne ? participants[0] : null
+  const remoteStream = remote ? remoteStreams.get(remote.userId) : undefined
 
   return (
-    <div className={`fixed inset-0 bg-black z-50 flex flex-col ${isFullscreen ? "" : "p-4"}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 text-white">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black">
+      {/* ===== Vídeos ===== */}
+      {isOneOnOne && remote ? (
+        <>
+          {/* Tela cheia: remoto (ou local, se trocado) */}
+          {swapped ? (
+            <VideoTile
+              stream={localStream}
+              name="Você"
+              isLocal
+              isMuted={isMuted}
+              cameraOn={isVideoEnabled}
+              showLabel={false}
+              className="absolute inset-0"
+            />
+          ) : (
+            <VideoTile stream={remoteStream} name={remote.name} className="absolute inset-0" />
+          )}
+
+          {/* PiP pequeno na frente */}
+          <div
+            className="absolute right-4 z-20"
+            style={{ top: "calc(env(safe-area-inset-top, 0px) + 84px)" }}
+          >
+            {swapped ? (
+              <VideoTile
+                stream={remoteStream}
+                name={remote.name}
+                avatarSize="sm"
+                showLabel={false}
+                onClick={() => setSwapped(false)}
+                className="h-36 w-24 rounded-xl shadow-lg ring-1 ring-white/20 md:h-48 md:w-36"
+              />
+            ) : (
+              <VideoTile
+                stream={localStream}
+                name="Você"
+                isLocal
+                isMuted={isMuted}
+                cameraOn={isVideoEnabled}
+                avatarSize="sm"
+                showLabel={false}
+                onClick={() => setSwapped(true)}
+                className="h-36 w-24 rounded-xl shadow-lg ring-1 ring-white/20 md:h-48 md:w-36"
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        // Chamada em grupo
+        <div
+          className={`absolute inset-0 grid auto-rows-fr gap-2 p-2 ${
+            participants.length + 1 <= 4 ? "grid-cols-2" : participants.length + 1 <= 9 ? "grid-cols-3" : "grid-cols-4"
+          }`}
+          style={{
+            paddingTop: "calc(env(safe-area-inset-top, 0px) + 84px)",
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)",
+          }}
+        >
+          <VideoTile
+            stream={localStream}
+            name="Você"
+            isLocal
+            isMuted={isMuted}
+            cameraOn={isVideoEnabled}
+            avatarSize="sm"
+            className="rounded-xl"
+          />
+          {participants.map((p) => (
+            <VideoTile
+              key={p.userId}
+              stream={remoteStreams.get(p.userId)}
+              name={p.name}
+              avatarSize="sm"
+              className="rounded-xl"
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ===== Header (sobre o vídeo) ===== */}
+      <div
+        className="absolute inset-x-0 top-0 z-30 flex items-start justify-between bg-gradient-to-b from-black/70 to-transparent px-5 pb-8 text-white"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+      >
         <div>
           <h2 className="text-xl font-semibold">
-            {participants.length === 1 ? participants[0].name : `Chamada em grupo (${participants.length + 1})`}
+            {remote ? remote.name : `Chamada em grupo (${participants.length + 1})`}
           </h2>
-          <div className="flex items-center gap-2 text-gray-300">
+          <div className="flex items-center gap-2 text-gray-200">
             <span>{formatDuration(duration)}</span>
             <div className="flex items-center gap-1">
-              {getConnectionStatusIcon()}
-              <span className="text-xs">{getConnectionStatusText()}</span>
+              {statusIcon}
+              <span className="text-xs">{statusText}</span>
             </div>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          className="text-white hover:bg-white/20"
-        >
-          <Maximize2 className="h-5 w-5" />
+        <Button variant="ghost" size="sm" onClick={toggleFullscreen} className="text-white hover:bg-white/20">
+          {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
         </Button>
       </div>
 
-      {/* Video Grid */}
-      <div className="flex-1 p-4">
-        {participants.length === 1 ? (
-          // One-on-one call layout
-          <div className="h-full grid grid-cols-1 gap-4">
-            <div className="relative">
-              <VideoStream stream={remoteStreams.get(participants[0].userId)} name={participants[0].name} />
-              {/* Local video overlay */}
-              <div className="absolute top-4 right-4 w-32 h-24 md:w-48 md:h-36">
-                <VideoStream stream={localStream || undefined} name="Você" isLocal />
-              </div>
-            </div>
-          </div>
-        ) : (
-          // Group call layout
-          <div
-            className={`h-full grid gap-4 ${
-              participants.length + 1 <= 4
-                ? "grid-cols-2"
-                : participants.length + 1 <= 9
-                  ? "grid-cols-3"
-                  : "grid-cols-4"
-            }`}
-          >
-            <VideoStream stream={localStream || undefined} name="Você" isLocal />
-            {participants.map((participant) => (
-              <VideoStream
-                key={participant.userId}
-                stream={remoteStreams.get(participant.userId)}
-                name={participant.name}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-4 p-6 bg-black/50">
+      {/* ===== Controles (fixos embaixo, respeitando a barra do celular) ===== */}
+      <div
+        className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-4 bg-gradient-to-t from-black/80 to-transparent px-4 pt-10"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+      >
         <Button
           variant={isMuted ? "destructive" : "secondary"}
           size="lg"
           onClick={onToggleMute}
-          className="rounded-full h-14 w-14 p-0"
-          disabled={connectionStatus === "disconnected" || connectionStatus === "error"}
+          className="h-14 w-14 rounded-full p-0"
+          disabled={callDisabled}
         >
           {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
         </Button>
@@ -214,23 +338,23 @@ export function ActiveCall({
           variant={isVideoEnabled ? "secondary" : "destructive"}
           size="lg"
           onClick={onToggleVideo}
-          className="rounded-full h-14 w-14 p-0"
-          disabled={connectionStatus === "disconnected" || connectionStatus === "error"}
+          className="h-14 w-14 rounded-full p-0"
+          disabled={callDisabled}
         >
           {isVideoEnabled ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
         </Button>
 
-        <Button 
-          variant="secondary" 
-          size="lg" 
-          onClick={onAddParticipant} 
-          className="rounded-full h-14 w-14 p-0"
-          disabled={connectionStatus === "disconnected" || connectionStatus === "error"}
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={onAddParticipant}
+          className="h-14 w-14 rounded-full p-0"
+          disabled={callDisabled}
         >
           <UserPlus className="h-6 w-6" />
         </Button>
 
-        <Button variant="destructive" size="lg" onClick={onEndCall} className="rounded-full h-14 w-14 p-0">
+        <Button variant="destructive" size="lg" onClick={onEndCall} className="h-14 w-14 rounded-full p-0">
           <Phone className="h-6 w-6 rotate-[135deg]" />
         </Button>
       </div>
