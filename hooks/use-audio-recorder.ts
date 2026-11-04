@@ -57,7 +57,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: mediaRecorder.mimeType || audioTypeRef.current || "audio/webm" })
         setAudioBlob(blob)
-        
+
         // Stop all tracks
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop())
@@ -86,7 +86,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       mediaRecorderRef.current.stop()
       setIsRecording(false)
       setIsPaused(false)
-      
+
       if (timerRef.current) {
         clearInterval(timerRef.current)
         timerRef.current = null
@@ -98,7 +98,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     if (mediaRecorderRef.current && isRecording && !isPaused) {
       mediaRecorderRef.current.pause()
       setIsPaused(true)
-      
+
       if (timerRef.current) {
         clearInterval(timerRef.current)
         timerRef.current = null
@@ -111,7 +111,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       mediaRecorderRef.current.resume()
       setIsPaused(false)
       startTimeRef.current = Date.now() - (recordingTime * 1000)
-      
+
       timerRef.current = setInterval(() => {
         setRecordingTime(Math.floor((Date.now() - startTimeRef.current) / 1000))
       }, 1000)
@@ -119,71 +119,57 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   }, [isRecording, isPaused, recordingTime])
 
   const uploadAudio = useCallback(async (conversationId: string): Promise<string | null> => {
-    if (!audioBlob) {
-      throw new Error("Nenhum áudio gravado")
-    }
+  if (!audioBlob) {
+    throw new Error("Nenhum áudio gravado")
+  }
 
-    try {
-      const token = localStorage.getItem("token")
-      if (!token) {
-        throw new Error("Token não encontrado")
-      }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !anonKey) {
+    throw new Error("Variáveis do Supabase não configuradas")
+  }
 
-      // Get upload URL from server
-      const response = await fetch("/api/audio-upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          conversationId,
-          duration: recordingTime,
-        }),
-      })
+  // Tira o ";codecs=opus" para bater com os tipos permitidos no bucket
+  const contentType = (audioBlob.type || "audio/webm").split(";")[0]
+  const ext = contentType.includes("mp4") ? "m4a" : contentType.includes("ogg") ? "ogg" : "webm"
+  const bucket = "audios_socializenow"
+  const path = `${conversationId}/${Date.now()}.${ext}`
 
-      if (!response.ok) {
-        throw new Error("Erro ao obter URL de upload")
-      }
+  const res = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": contentType,
+    },
+    body: audioBlob,
+  })
 
-      const { uploadUrl, audioUrl } = await response.json()
+  if (!res.ok) {
+    const detail = await res.text()
+    console.error("Erro no upload do áudio:", res.status, detail)
+    throw new Error("Erro ao fazer upload do áudio")
+  }
 
-      // Upload audio to S3 (usa o tipo real do blob para Safari/outros navegadores)
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        body: audioBlob,
-        headers: {
-          "Content-Type": audioBlob.type || "audio/webm",
-        },
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error("Erro ao fazer upload do áudio")
-      }
-
-      return audioUrl
-    } catch (error) {
-      console.error("Erro ao fazer upload do áudio:", error)
-      throw error
-    }
-  }, [audioBlob, recordingTime])
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`
+}, [audioBlob])
 
   const resetRecording = useCallback(() => {
     setIsRecording(false)
     setIsPaused(false)
     setRecordingTime(0)
     setAudioBlob(null)
-    
+
     if (timerRef.current) {
       clearInterval(timerRef.current)
       timerRef.current = null
     }
-    
+
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
-    
+
     mediaRecorderRef.current = null
   }, [])
 
