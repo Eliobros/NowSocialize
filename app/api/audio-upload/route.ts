@@ -1,18 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import jwt from "jsonwebtoken"
 import clientPromise from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { emitNewMessage } from "@/lib/socket-relay"
+import { supabase } from "@/lib/supabase"
 
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-})
+// Nome do bucket configurado no painel do Supabase
+const BUCKET_NAME = "audios_socializenow"
 
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization")
@@ -38,28 +32,46 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { conversationId, duration } = await req.json()
+    const formData = await req.formData()
+    const file = formData.get("file") as Blob | null
+    const conversationId = formData.get("conversationId") as string | null
+    const durationStr = formData.get("duration") as string | null
+    const duration = durationStr ? parseInt(durationStr, 10) : 0
 
     if (!conversationId) {
       return NextResponse.json({ error: "ID da conversa é obrigatório." }, { status: 400 })
     }
 
-    // Generate unique filename
+    if (!file) {
+      return NextResponse.json({ error: "Arquivo de áudio não fornecido." }, { status: 400 })
+    }
+
+    // Gerar estrutura de pastas única no bucket: usuario/conversa/timestamp.webm
     const timestamp = Date.now()
-    const filename = `audio/${userId}/${conversationId}/${timestamp}.webm`
+    const filename = `${userId}/${conversationId}/${timestamp}.webm`
 
-    // Create presigned URL for upload
-    const putObjectCommand = new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME!,
-      Key: filename,
-      ContentType: "audio/webm",
-    })
+    // Converter Blob para Buffer para processamento correto no backend
+    const buffer = Buffer.from(await file.arrayBuffer())
 
-    const presignedUrl = await getSignedUrl(s3Client, putObjectCommand, {
-      expiresIn: 3600, // 1 hour
-    })
+    // Envia o arquivo para o Supabase Storage usando o cliente centralizado
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(filename, buffer, {
+        contentType: "audio/webm",
+        upsert: true
+      })
 
-    // Save audio message to MongoDB
+    if (uploadError) {
+      console.error("Erro no upload do Supabase:", uploadError)
+      return NextResponse.json({ error: "Falha ao salvar áudio no storage." }, { status: 500 })
+    }
+
+    // Resgata a URL pública gerada para salvar no banco
+    const { data: { publicUrl } } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(filename)
+
+    // Conectar ao MongoDB para salvar o registro da mensagem
     const client = await clientPromise
     const db = client.db("socializenow")
     const messagesCollection = db.collection("messages")
@@ -68,7 +80,7 @@ export async function POST(req: NextRequest) {
       conversationId: new ObjectId(conversationId),
       sender: new ObjectId(userId),
       type: "audio",
-      audioUrl: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`,
+      audioUrl: publicUrl,
       duration: duration || 0,
       createdAt: new Date(),
       read: false,
@@ -76,11 +88,13 @@ export async function POST(req: NextRequest) {
 
     const result = await messagesCollection.insertOne(audioMessage)
 
-    // Emitir em tempo real via Socket.IO
+    // Buscar dados do remetente para o payload do WebSocket
     const senderData = await db.collection("users").findOne(
       { _id: new ObjectId(userId) },
       { projection: { name: 1, avatar: 1 } }
     )
+    
+    // Emitir o evento de mensagem em tempo real
     void emitNewMessage({
       conversationId,
       senderId: userId,
@@ -101,7 +115,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Atualizar a última mensagem da conversa
+    // Atualizar os metadados da última mensagem da conversa
     await db.collection("conversations").updateOne(
       { _id: new ObjectId(conversationId) },
       {
@@ -119,8 +133,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       messageId: result.insertedId,
-      uploadUrl: presignedUrl,
-      audioUrl: audioMessage.audioUrl,
+      audioUrl: publicUrl,
     })
   } catch (error) {
     console.error("Erro ao processar upload de áudio:", error)
