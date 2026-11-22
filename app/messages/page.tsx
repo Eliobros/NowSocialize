@@ -131,6 +131,14 @@ export default function MessagesPage() {
 
   const { isConnected, joinConversation, leaveConversation, startTyping, stopTyping, markRead, sendReaction } = useSocket({
     userId: currentUserId,
+    onReconnect: () => {
+      // Quem mandou mensagem enquanto estávamos fora não veio pelo socket
+      const convId = selectedConversationRef.current
+      if (convId) {
+        fetchMessages(convId)
+      }
+      fetchConversations()
+    },
     onNewMessage: (newMessage) => {
       if (newMessage.conversationId === selectedConversationRef.current) {
         const lang = currentUserLanguageRef.current
@@ -269,6 +277,28 @@ export default function MessagesPage() {
     }
   }, [selectedConversation])
 
+  // Fallback: com o socket desconectado nada chega em tempo real, então
+  // re-sincroniza ao voltar para a aba em vez de exigir recarregar a página.
+  useEffect(() => {
+    if (isConnected) return
+
+    const resync = () => {
+      if (document.visibilityState !== "visible") return
+      const convId = selectedConversationRef.current
+      if (convId) {
+        fetchMessages(convId)
+      }
+      fetchConversations()
+    }
+
+    document.addEventListener("visibilitychange", resync)
+    window.addEventListener("focus", resync)
+    return () => {
+      document.removeEventListener("visibilitychange", resync)
+      window.removeEventListener("focus", resync)
+    }
+  }, [isConnected, fetchMessages, fetchConversations])
+
   const translatingRef = React.useRef(false)
   useEffect(() => {
     if (!currentUserLanguage || messages.length === 0 || translatingRef.current) return
@@ -377,16 +407,19 @@ export default function MessagesPage() {
       return true
     }
     
-    const success = await sendMessage(selectedConversation, content, image, replyingTo?._id, targetLang || currentUserLanguage || undefined)
-if (success) {
-  setReplyingTo(null)
-  await fetchConversations()
+    const sent = await sendMessage(selectedConversation, content, image, replyingTo?._id, targetLang || currentUserLanguage || undefined)
+    if (sent) {
+      // Balão imediato para quem enviou: não espera o eco do socket.
+      // O _id já é o real, então o addMessage deduplica quando o eco chegar.
+      addMessage(sent)
+      setReplyingTo(null)
+      await fetchConversations()
 
-  if (selectedConv?.type === "group" && /@tina/i.test(content)) {
-    handleTinaMention(content, selectedConversation)
-  }
-}
-    return success
+      if (selectedConv?.type === "group" && /@tina/i.test(content)) {
+        handleTinaMention(content, selectedConversation)
+      }
+    }
+    return Boolean(sent)
   }
 
   const handleTinaMention = async (content: string, conversationId: string) => {

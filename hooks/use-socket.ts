@@ -21,11 +21,14 @@ interface UseSocketOptions {
   onDemotedFromAdmin?: (data: any) => void
   onMessagesRead?: (data: { conversationId: string; userId: string; readAt: string }) => void
   onReactionUpdated?: (data: { conversationId: string; messageId: string; emoji: string; userId: string; action: string }) => void
+  /** Chamado quando o socket reconecta depois de uma queda (para re-sincronizar). */
+  onReconnect?: () => void
 }
 
 export function useSocket(options: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null)
   const joinedConversationRef = useRef<string | null>(null)
+  const hadConnectedRef = useRef(false)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
@@ -38,8 +41,12 @@ export function useSocket(options: UseSocketOptions) {
       transports: ['websocket', 'polling'],
       secure: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      // Sem limite: se o servidor cair/reiniciar, a aba volta sozinha em vez de
+      // desistir para sempre e só atualizar quando o usuário recarregar.
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.5,
       auth: { token }
     })
 
@@ -58,6 +65,12 @@ export function useSocket(options: UseSocketOptions) {
       if (joinedConversationRef.current) {
         socket.emit('join_conversation', joinedConversationRef.current)
       }
+
+      // Reconexão: o que chegou enquanto estava fora não veio pelo socket
+      if (hadConnectedRef.current) {
+        options.onReconnect?.()
+      }
+      hadConnectedRef.current = true
     })
 
     socket.on('connect_error', (error) => {

@@ -54,16 +54,19 @@ export function useMessages() {
     }
   }, [])
 
+  // Retorna a mensagem criada (com _id real) para o chat inserir o balão na
+  // hora, sem depender do eco do socket. Retorna null em caso de falha.
   const sendMessage = useCallback(async (
     conversationId: string,
     content: string,
     image?: File,
     replyToId?: string,
     targetLang?: string 
-  ) => {
+  ): Promise<Message | null> => {
     try {
       const token = localStorage.getItem("token")
 
+      let response: Response
       if (image) {
         const formData = new FormData()
         formData.append("conversationId", conversationId)
@@ -72,15 +75,13 @@ export function useMessages() {
         if (replyToId) formData.append("replyToId", replyToId)
 	if (targetLang) formData.append("targetLang", targetLang)
 
-        const response = await fetch("/api/messages", {
+        response = await fetch("/api/messages", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: formData
         })
-
-        return response.ok
       } else {
-        const response = await fetch("/api/messages", {
+        response = await fetch("/api/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -93,12 +94,15 @@ export function useMessages() {
 	    targetLang
           })
         })
-
-        return response.ok
       }
+
+      if (!response.ok) return null
+
+      const data = await response.json().catch(() => null)
+      return (data?.data as Message) || null
     } catch (err) {
       console.error("Send message error:", err)
-      return false
+      return null
     }
   }, [])
 

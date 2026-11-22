@@ -177,15 +177,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Destinatário recebe o conteúdo TRADUZIDO; remetente recebe o ORIGINAL.
-    // Fire-and-forget: não atrasa a resposta do POST se o socket server estiver fora.
-    void emitNewMessage({
+    // Precisa de await: em ambiente serverless (Vercel) a função é congelada
+    // assim que a resposta sai, e um relay fire-and-forget se perde no meio.
+    // O relay tem timeout próprio e sempre resolve, então não trava o POST.
+    const senderMessage = { ...basePayload, content: originalText }
+
+    await emitNewMessage({
       conversationId,
       senderId: user.userId,
       message: { ...basePayload, content: finalContent },
-      senderMessage: { ...basePayload, content: originalText },
+      senderMessage,
     })
 
-    return NextResponse.json({ success: true, data: messageData })
+    // Devolve a mesma mensagem que foi para o socket (com _id real), para o
+    // cliente inserir o balão na hora sem esperar o eco.
+    return NextResponse.json({ success: true, data: senderMessage })
   } catch (error) {
     console.error("Erro ao enviar mensagem:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })
