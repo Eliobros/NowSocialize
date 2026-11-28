@@ -3,7 +3,8 @@ import jwt from "jsonwebtoken"
 import clientPromise from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { emitNewMessage } from "@/lib/socket-relay"
-import { supabase } from "@/lib/supabase"
+import { getSupabase } from "@/lib/supabase"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Nome do bucket configurado no painel do Supabase
 const BUCKET_NAME = "audios_socializenow"
@@ -29,6 +30,15 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Erro ao verificar token JWT:", error)
     return NextResponse.json({ error: "Não autorizado: Token inválido ou expirado." }, { status: 401 })
+  }
+
+  // Lazy init dentro da rota: sem envs, devolve 500 em vez de quebrar o build.
+  let supabase: SupabaseClient
+  try {
+    supabase = getSupabase()
+  } catch (error) {
+    console.error("Supabase não configurado:", error)
+    return NextResponse.json({ error: "Erro de configuração do servidor." }, { status: 500 })
   }
 
   try {
