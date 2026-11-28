@@ -16,14 +16,64 @@ import { isValidMediaSecret } from "@/lib/live/media-auth";
 // - read/playback public/*    -> aberto (HLS público)
 // - read/playback live/*      -> só a ponte ffmpeg (credencial bridge)
 // - api/metrics/pprof         -> só localhost
-function hasBridgeCredentials(user: unknown, password: unknown): boolean {
+function hasBridgeCredentials(
+  user: unknown,
+  password: unknown,
+  query: unknown
+): boolean {
   const expectedUser = process.env.MTMX_BRIDGE_USER;
   const expectedPass = process.env.MTMX_BRIDGE_PASS;
 
   // Fail closed: sem credencial configurada, a ponte nunca autentica.
   if (!expectedUser || !expectedPass) return false;
 
-  return user === expectedUser && isValidMediaSecret(password, expectedPass);
+  if (user === expectedUser && isValidMediaSecret(password, expectedPass)) {
+    return true;
+  }
+
+  // Fallback: credencial via query string (?user=&pass=). É o ÚNICO jeito
+  // no RTMP — o MediaMTX ignora userinfo (user:pass@) por limitação do protocolo.
+  const fromQuery = credentialsFromQuery(query);
+
+  if (!fromQuery) return false;
+
+  return (
+    fromQuery.user === expectedUser &&
+    isValidMediaSecret(fromQuery.password, expectedPass)
+  );
+}
+
+// Extrai user/pass de "user=..&pass=.." (aceita alias password=).
+function credentialsFromQuery(
+  query: unknown
+): { user: string; password: string } | null {
+  if (typeof query !== "string" || !query) return null;
+
+  let user: string | null = null;
+  let password: string | null = null;
+
+  for (const part of query.split("&")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+
+    const key = part.slice(0, eq);
+    let value: string;
+
+    try {
+      value = decodeURIComponent(part.slice(eq + 1));
+    } catch {
+      continue;
+    }
+
+    if (key === "user" && user === null) user = value;
+    else if ((key === "pass" || key === "password") && password === null) {
+      password = value;
+    }
+  }
+
+  if (user === null || password === null) return null;
+
+  return { user, password };
 }
 
 // Nunca logar chaves: o path live/* contém a streamKey secreta.
@@ -41,11 +91,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false }, { status: 401 });
   }
 
-  const { user, password, ip, action, path } = body ?? {};
+  const { user, password, ip, action, path, query } = body ?? {};
 
   const deny = (reason: string) => {
     console.log(
-      `[mtmx-auth] NEGADO reason=${reason} action=${action} path=${typeof path === "string" ? safePath(path) : "?"} ip=${ip}`
+      `[mtmx-auth] NEGADO reason=${reason} action=${action} path=${typeof path === "string" ? safePath(path) : "?"} user=${typeof user === "string" && user ? user : "-"} ip=${ip}`
     );
     return NextResponse.json({ success: false }, { status: 401 });
   };
@@ -75,7 +125,7 @@ export async function POST(request: NextRequest) {
 
       // Ponte ffmpeg -> path público: só com credencial bridge.
       if (/^public\/[a-f0-9]{24}$/.test(path)) {
-        return hasBridgeCredentials(user, password)
+        return hasBridgeCredentials(user, password, query)
           ? NextResponse.json({ success: true })
           : deny("publish-public");
       }
@@ -93,7 +143,7 @@ export async function POST(request: NextRequest) {
       // Path privado: só a ponte (com credencial — o IP não distingue,
       // porque o nginx faz todos os HLS parecerem localhost).
       if (path.startsWith("live/")) {
-        return hasBridgeCredentials(user, password)
+        return hasBridgeCredentials(user, password, query)
           ? NextResponse.json({ success: true })
           : deny("read-live");
       }

@@ -48,9 +48,15 @@ esac
 
 # A publicação original já foi autorizada pelo auth HTTP; aqui só repassamos.
 # Leitura e publicação da ponte usam a credencial bridge (exigida pelo mtmx-auth).
-BRIDGE_USER="${MTMX_BRIDGE_USER:-bridge}"
-IN="rtmp://${BRIDGE_USER}:${MTMX_BRIDGE_PASS:-}@127.0.0.1:1935/live/$KEY"
-OUT="rtmp://${BRIDGE_USER}:${MTMX_BRIDGE_PASS:-}@127.0.0.1:1935/public/$LIVE_ID"
+# ATENÇÃO: no RTMP a credencial vai na QUERY (?user=&pass=). O MediaMTX ignora
+# userinfo (user:pass@) por limitação do protocolo — com userinfo o auth chega
+# vazio e a leitura cai no 401.
+if [ -z "${MTMX_BRIDGE_USER:-}" ] || [ -z "${MTMX_BRIDGE_PASS:-}" ]; then
+  echo "[on-online] MTMX_BRIDGE_USER/PASS vazios (ver live.env)" >&2
+  exit 1
+fi
+IN="rtmp://127.0.0.1:1935/live/$KEY?user=$MTMX_BRIDGE_USER&pass=$MTMX_BRIDGE_PASS"
+OUT="rtmp://127.0.0.1:1935/public/$LIVE_ID?user=$MTMX_BRIDGE_USER&pass=$MTMX_BRIDGE_PASS"
 
 echo "[on-online] ponte live/<redacted> -> public/$LIVE_ID" >&2
 exec ffmpeg -hide_banner -loglevel warning -i "$IN" -c copy -f flv "$OUT"
