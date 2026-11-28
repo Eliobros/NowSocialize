@@ -5,6 +5,7 @@ import { verifyToken } from "@/lib/auth";
 import { getLiveCollections } from "@/lib/live/database";
 import { isValidObjectId } from "@/lib/live/helpers";
 import { LIVE_CONFIG } from "@/lib/live/config";
+import { emitLiveEnded } from "@/lib/socket-relay";
 
 interface RouteContext {
   params: Promise<{
@@ -101,6 +102,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     await viewers.deleteMany({ liveId: liveObjectId });
+
+    await emitLiveEnded(liveId, now.toISOString());
 
     return NextResponse.json({
       success: true,

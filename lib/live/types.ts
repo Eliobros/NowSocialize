@@ -43,6 +43,8 @@ _id?: ObjectId;
 
 liveId: ObjectId;
 userId: string;
+username: string;
+avatar?: string | null;
 socketId: string;
 
 joinedAt: Date;

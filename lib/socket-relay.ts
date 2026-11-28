@@ -19,6 +19,96 @@ interface NewMessagePayload {
 }
 
 /**
+ * Relay genérico para processo separado: conecta ao socket server, emite um
+ * evento `relay_*` e resolve sempre (best-effort, nunca rejeita).
+ */
+function emitViaRelayClient(event: string, data: Record<string, unknown>): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let socket: Socket | null = null
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      try {
+        socket?.disconnect()
+      } catch {}
+      resolve()
+    }
+    const timer = setTimeout(finish, 4000)
+
+    try {
+      socket = createClient(SOCKET_SERVER_URL, {
+        transports: ["websocket", "polling"],
+        reconnection: false,
+        forceNew: true,
+        timeout: 3000,
+      })
+
+      socket.on("connect", () => {
+        socket?.emit(event, { ...data, secret: RELAY_SECRET })
+        clearTimeout(timer)
+        setTimeout(finish, 200)
+      })
+
+      socket.on("relay_ack", () => {
+        clearTimeout(timer)
+        setTimeout(finish, 50)
+      })
+
+      socket.on("connect_error", () => {
+        clearTimeout(timer)
+        finish()
+      })
+    } catch (err) {
+      console.error("[socket-relay] Erro ao conectar ao socket server:", err)
+      clearTimeout(timer)
+      finish()
+    }
+  })
+}
+
+/**
+ * Avisa a sala `live:{liveId}` que a contagem de espectadores mudou.
+ */
+export async function emitLiveViewers(liveId: string, viewersCount: number): Promise<void> {
+  const g = global as any
+
+  if (g.__SOCKET_SERVER__ && g.io) {
+    try {
+      g.io.to(`live:${liveId}`).emit("live_viewers_updated", { liveId, viewersCount })
+    } catch (err) {
+      console.error("[socket-relay] Erro ao emitir viewers via io global:", err)
+    }
+    return
+  }
+
+  await emitViaRelayClient("relay_live_viewers", { liveId, viewersCount })
+}
+
+/**
+ * Avisa a sala `live:{liveId}` que a transmissão terminou.
+ */
+export async function emitLiveEnded(liveId: string, endedAt: string): Promise<void> {
+  const g = global as any
+
+  if (g.__SOCKET_SERVER__ && g.io) {
+    try {
+      g.io.to(`live:${liveId}`).emit("live_ended", { liveId, endedAt })
+      const sockets = await g.io.in(`live:${liveId}`).fetchSockets()
+      for (const s of sockets) {
+        s.leave(`live:${liveId}`)
+        if (s.liveId === liveId) s.liveId = null
+      }
+    } catch (err) {
+      console.error("[socket-relay] Erro ao emitir live_ended via io global:", err)
+    }
+    return
+  }
+
+  await emitViaRelayClient("relay_live_ended", { liveId, endedAt })
+}
+
+/**
  * Emite "new_message" para a sala da conversa e para a sala do remetente.
  * O destinatário recebe `message` (traduzido, se aplicável) e o remetente
  * recebe `senderMessage` (o texto original).

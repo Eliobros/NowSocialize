@@ -59,6 +59,7 @@
     "embla-carousel-react": "latest",
     "fs": "latest",
     "gcp-metadata": "latest",
+    "hls.js": "^1.7.4",
     "http": "latest",
     "input-otp": "latest",
     "jsonwebtoken": "latest",

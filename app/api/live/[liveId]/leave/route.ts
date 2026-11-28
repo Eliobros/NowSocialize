@@ -4,6 +4,7 @@ import { ObjectId } from "mongodb";
 import { verifyToken } from "@/lib/auth";
 import { getLiveCollections } from "@/lib/live/database";
 import { isValidObjectId } from "@/lib/live/helpers";
+import { emitLiveViewers } from "@/lib/socket-relay";
 
 interface RouteContext {
   params: Promise<{
@@ -72,12 +73,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
 
     const updatedLive = await lives.findOne({ _id: liveObjectId });
+    const viewersCount = updatedLive?.viewersCount ?? 0;
+
+    await emitLiveViewers(liveId, viewersCount);
 
     return NextResponse.json({
       success: true,
       alreadyLeft: false,
       message: "Saíste da Live.",
-      viewersCount: updatedLive?.viewersCount ?? 0,
+      viewersCount,
     });
   } catch (error) {
     console.error("[LIVE LEAVE ERROR]", error);

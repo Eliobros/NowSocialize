@@ -1,34 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 
-import { getLiveCollections, ensureLiveIndexes } from "@/lib/live/database";
+import { ensureLiveIndexes } from "@/lib/live/database";
+import { LIVE_CONFIG } from "@/lib/live/config";
+import {
+  getMediaSecret,
+  extractMediaSecret,
+  isValidMediaSecret,
+} from "@/lib/live/media-auth";
+import { authorizePublishByKey } from "@/lib/live/publish-gate";
 
-// Segredo partilhado com o servidor de mídia. Aceita um segredo dedicado
-// (MEDIA_SERVER_SECRET) com fallback para os segredos já existentes.
-function getExpectedSecret(): string | null {
-  return (
-    process.env.MEDIA_SERVER_SECRET ||
-    process.env.SOCKET_RELAY_SECRET ||
-    process.env.JWT_SECRET ||
-    null
-  );
-}
-
-function secretsMatch(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-
-  if (a.length !== b.length) return false;
-
-  return timingSafeEqual(a, b);
-}
-
-// POST — Validação interna: o servidor de mídia pergunta se uma streamKey é válida.
-// Semântica de webhook (ex: on_publish): 2xx AUTORIZA a publicação,
+// POST — Validação interna (on_publish): o servidor de mídia pergunta se uma
+// streamKey é válida. Semântica de webhook: 2xx AUTORIZA a publicação,
 // qualquer outro status RECUSA.
+// Efeito colateral: chave válida com live em waiting inicia a live
+// automaticamente (o POST /start manual continua como fallback).
 export async function POST(request: NextRequest) {
   try {
-    const expectedSecret = getExpectedSecret();
+    const expectedSecret = getMediaSecret();
 
     // Fail closed: sem segredo configurado, ninguém valida nada.
     if (!expectedSecret) {
@@ -57,15 +45,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cabeçalho primário; body.secret existe porque alguns servidores de mídia
+    // body.secret existe porque alguns servidores de mídia
     // (ex: nginx-rtmp on_publish) não permitem cabeçalhos personalizados.
-    const providedSecret: unknown =
-      request.headers.get("x-media-secret") ?? body.secret;
+    const providedSecret = extractMediaSecret(request, body.secret);
 
-    if (
-      typeof providedSecret !== "string" ||
-      !secretsMatch(providedSecret, expectedSecret)
-    ) {
+    if (!isValidMediaSecret(providedSecret, expectedSecret)) {
       return NextResponse.json(
         { success: false, valid: false, message: "Segredo inválido." },
         { status: 401 }
@@ -87,29 +71,52 @@ export async function POST(request: NextRequest) {
 
     await ensureLiveIndexes();
 
-    const { lives } = await getLiveCollections();
+    const gate = await authorizePublishByKey(streamKey);
 
-    const live = await lives.findOne(
-      { streamKey },
-      { projection: { streamKey: 0 } }
-    );
+    if (!gate.allowed) {
+      if (gate.reason === "ended") {
+        return NextResponse.json(
+          { success: false, valid: false, message: "Esta Live já terminou." },
+          { status: 409 }
+        );
+      }
 
-    if (!live) {
+      if (gate.reason === "race") {
+        return NextResponse.json(
+          {
+            success: false,
+            valid: false,
+            message: "Tenta novamente.",
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         { success: false, valid: false, message: "Stream key desconhecida." },
         { status: 404 }
       );
     }
 
+    // Contrato OBS <-> HLS (o servidor de mídia faz o mapeamento interno):
+    // - Publicação (secreta): rtmp://<midia>/live/{streamKey} (vem do OBS)
+    // - Reprodução (pública): https://<midia>/public/{liveId}/index.m3u8 (vai ao browser)
+    // A streamKey NUNCA aparece na URL de reprodução; o liveId top-level
+    // existe para o servidor de mídia montar o path público sem parsear o objeto.
+    const liveId = gate.liveId as string;
+
     return NextResponse.json({
       success: true,
       valid: true,
+      autoStarted: gate.autoStarted,
+      liveId,
       live: {
-        id: live._id?.toString(),
-        status: live.status,
-        title: live.title,
-        streamerId: live.streamerId,
-        streamerName: live.streamerName,
+        id: liveId,
+        status: LIVE_CONFIG.STATUS.LIVE,
+        title: gate.title,
+        streamerId: gate.streamerId,
+        streamerName: gate.streamerName,
+        startedAt: gate.startedAt,
       },
     });
   } catch (error) {

@@ -369,6 +369,48 @@ global.__SOCKET_SERVER__ = true
       console.log(`Relayed new_message para ${conversationId}`)
     })
 
+    // ==================== RELAY DE LIVES (server-to-server) ====================
+    // A API avisa aqui quando viewers entram/saem ou a live termina.
+    // Fail closed: sem segredo configurado, nenhum relay é aceite.
+    const isValidRelaySecret = (secret) => {
+      const relaySecret = process.env.SOCKET_RELAY_SECRET || process.env.JWT_SECRET
+      if (!relaySecret || typeof secret !== "string") return false
+      return secret === relaySecret
+    }
+
+    socket.on("relay_live_viewers", (data) => {
+      const { liveId, viewersCount, secret } = data || {}
+      if (!liveId || typeof viewersCount !== "number") return
+      if (!isValidRelaySecret(secret)) {
+        console.log("Relay live_viewers bloqueado: secret inválido")
+        return
+      }
+      io.to(`live:${liveId}`).emit("live_viewers_updated", { liveId, viewersCount })
+      socket.emit("relay_ack")
+    })
+
+    socket.on("relay_live_ended", async (data) => {
+      const { liveId, endedAt, secret } = data || {}
+      if (!liveId) return
+      if (!isValidRelaySecret(secret)) {
+        console.log("Relay live_ended bloqueado: secret inválido")
+        return
+      }
+      const room = `live:${liveId}`
+      io.to(room).emit("live_ended", { liveId, endedAt: endedAt || new Date().toISOString() })
+      socket.emit("relay_ack")
+      // Tira toda a gente da sala para não ficar membership stale
+      try {
+        const sockets = await io.in(room).fetchSockets()
+        for (const s of sockets) {
+          s.leave(room)
+          if (s.liveId === liveId) s.liveId = null
+        }
+      } catch (err) {
+        console.error("Erro ao limpar sala da live:", err.message)
+      }
+    })
+
     // ==================== CONFIRMAÇÃO DE LEITURA ====================
     socket.on("mark_read", async (data) => {
       const { conversationId, userId } = data
@@ -406,8 +448,128 @@ global.__SOCKET_SERVER__ = true
       }
     })
 
+    // ==================== LIVES EM TEMPO REAL ====================
+    // Remove o viewer deste socket (se houver) e atualiza o contador.
+    // Chamado no leave explícito, na troca de live e no disconnect.
+    const leaveLiveRoom = async ({ broadcast = true } = {}) => {
+      const liveId = socket.liveId
+      if (!liveId) return
+      const room = `live:${liveId}`
+      socket.leave(room)
+      socket.liveId = null
+      if (!db) return
+      try {
+        const removed = await db.collection("live_viewers").deleteOne({ socketId: socket.id })
+        // Só decrementa se realmente removeu um registo (evita duplo decremento
+        // quando a API já tirou o viewer via REST /leave ou /end).
+        if (removed.deletedCount === 1) {
+          await db.collection("lives").updateOne(
+            { _id: new ObjectId(liveId), viewersCount: { $gt: 0 } },
+            { $inc: { viewersCount: -1 } }
+          )
+          if (broadcast) {
+            const live = await db.collection("lives").findOne({ _id: new ObjectId(liveId) })
+            if (live) {
+              io.to(room).emit("live_viewers_updated", { liveId, viewersCount: live.viewersCount ?? 0 })
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erro no cleanup de viewer da live:", err.message)
+      }
+    }
+
+    // Entrar na sala de espectadores (depois do POST /join com sucesso)
+    socket.on("join_live_room", async (data) => {
+      const liveId = typeof data === "string" ? data : data?.liveId
+      if (!liveId || !ObjectId.isValid(liveId)) return
+      if (socket.liveId && socket.liveId !== liveId) {
+        await leaveLiveRoom()
+      }
+      socket.liveId = liveId
+      socket.join(`live:${liveId}`)
+      console.log(`Socket ${socket.id} entrou na sala live:${liveId}`)
+    })
+
+    // Sair da sala (o app deve chamar também o POST /leave)
+    socket.on("leave_live_room", async () => {
+      await leaveLiveRoom()
+    })
+
+    // Chat da live: valida, persiste e distribui para a sala.
+    // Só fala quem entrou via REST /join (ou o dono da live).
+    // Sempre responde o ack (quando o cliente pede): { ok:true, id } ou
+    // { ok:false, reason } — sem resposta o cliente assume deploy sem o handler.
+    socket.on("send_live_message", async (data, ack) => {
+      const reply = (payload) => {
+        if (typeof ack === "function") {
+          try {
+            ack(payload)
+          } catch {}
+        }
+      }
+      const reject = (reason) => {
+        console.log(`[live-chat] rejeitada (${reason}) live=${data?.liveId} user=${socket.userId || "?"} socket=${socket.id}`)
+        reply({ ok: false, reason })
+      }
+
+      const { liveId, message } = data || {}
+      if (!liveId || !ObjectId.isValid(liveId)) return reject("invalid-live")
+      if (typeof message !== "string") return reject("invalid-message")
+      const text = message.trim().slice(0, 500)
+      if (!text) return reject("empty")
+      if (!db) return reject("no-db")
+      if (!socket.userId) return reject("not-identified")
+
+      // Throttle simples anti-flood: 1 msg / 700ms por socket
+      const now = Date.now()
+      if (socket.lastLiveMsgAt && now - socket.lastLiveMsgAt < 700) return reject("throttled")
+      socket.lastLiveMsgAt = now
+
+      try {
+        const liveObjectId = new ObjectId(liveId)
+        const [live, viewer] = await Promise.all([
+          db.collection("lives").findOne({ _id: liveObjectId }),
+          db.collection("live_viewers").findOne({ liveId: liveObjectId, userId: socket.userId }),
+        ])
+
+        if (!live) return reject("live-not-found")
+        if (live.status !== "live") return reject("live-not-live")
+
+        const isStreamer = live.streamerId === socket.userId
+        if (!viewer && !isStreamer) return reject("not-member")
+
+        const doc = {
+          liveId: liveObjectId,
+          userId: socket.userId,
+          username: isStreamer ? (live.streamerName || "Streamer") : (viewer.username || "Anónimo"),
+          avatar: isStreamer ? (live.streamerAvatar || null) : (viewer.avatar || null),
+          message: text,
+          createdAt: new Date(),
+        }
+
+        const result = await db.collection("live_messages").insertOne(doc)
+
+        io.to(`live:${liveId}`).emit("live_message", {
+          id: result.insertedId.toString(),
+          userId: doc.userId,
+          username: doc.username,
+          avatar: doc.avatar,
+          message: doc.message,
+          createdAt: doc.createdAt.toISOString(),
+        })
+        reply({ ok: true, id: result.insertedId.toString() })
+      } catch (err) {
+        console.error("Erro ao enviar mensagem da live:", err.message)
+        reply({ ok: false, reason: "internal" })
+      }
+    })
+
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id)
+
+      // Cleanup de live: remove o viewer e atualiza o contador dos restantes
+      await leaveLiveRoom()
 
       for (const [userId, socketId] of activeUsers.entries()) {
         if (socketId === socket.id) {

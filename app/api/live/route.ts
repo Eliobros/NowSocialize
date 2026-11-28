@@ -148,10 +148,15 @@ const activeLives = await lives
 
 return NextResponse.json({
   success: true,
-  lives: activeLives.map((live) => ({
-    ...live,
-    _id: live._id?.toString(),
-  })),
+  lives: activeLives.map((live) => {
+    // Resposta usa `id` (string), igual à rota de detalhe — sem `_id`.
+    const { _id, ...rest } = live;
+
+    return {
+      ...rest,
+      id: _id?.toString(),
+    };
+  }),
 });
 
 } catch (error) {

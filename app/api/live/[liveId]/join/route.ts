@@ -5,6 +5,7 @@ import { verifyToken } from "@/lib/auth";
 import { getLiveCollections, ensureLiveIndexes } from "@/lib/live/database";
 import { isValidObjectId } from "@/lib/live/helpers";
 import { LIVE_CONFIG } from "@/lib/live/config";
+import { emitLiveViewers } from "@/lib/socket-relay";
 
 interface RouteContext {
   params: Promise<{
@@ -96,6 +97,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await viewers.insertOne({
         liveId: liveObjectId,
         userId: user.userId,
+        username: user.name,
+        avatar: user.avatar ?? null,
         socketId,
         joinedAt: now,
       });
@@ -104,7 +107,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (error?.code === 11000) {
         await viewers.updateOne(
           { liveId: liveObjectId, userId: user.userId },
-          { $set: { socketId, joinedAt: now } }
+          {
+            $set: {
+              socketId,
+              joinedAt: now,
+              username: user.name,
+              avatar: user.avatar ?? null,
+            },
+          }
         );
 
         const current = await lives.findOne({ _id: liveObjectId });
@@ -134,12 +144,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (capacity.modifiedCount === 1) {
       const updatedLive = await lives.findOne({ _id: liveObjectId });
+      const viewersCount = updatedLive?.viewersCount ?? 0;
+
+      await emitLiveViewers(liveId, viewersCount);
 
       return NextResponse.json({
         success: true,
         alreadyJoined: false,
         message: "Entraste na Live com sucesso!",
-        viewersCount: updatedLive?.viewersCount ?? 0,
+        viewersCount,
         maxViewers: updatedLive?.maxViewers ?? LIVE_CONFIG.MAX_VIEWERS,
       });
     }

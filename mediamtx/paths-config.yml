@@ -1,0 +1,28 @@
+# Bloco exato para fundir no /usr/local/etc/mediamtx/mediamtx.yml (v1.21.4).
+#
+# 1) Trocar `authMethod: internal` por `authMethod: http` + authHTTPAddress abaixo.
+#    Com auth externo, o bloco authInternalUsers fica INATIVO (pode comentar/remover
+#    ou deixar como está — as regras passam a viver no POST /api/live/mtmx-auth).
+# 2) Adicionar a entrada ~^live/ em `paths:` (manter o `all_others:` como está).
+#
+# IMPORTANTE: depois de editar, `systemctl restart mediamtx` (ou reiniciar o
+# processo). O MediaMTX só lê o yml no arranque.
+
+# --- Global settings -> Authentication ---
+authMethod: http
+authHTTPAddress: http://127.0.0.1:3002/api/live/mtmx-auth
+
+# --- Path settings ---
+paths:
+  # Path privado de ingestão: OBS publica em live/<streamKey>.
+  # $G1 = streamKey; $MTX_PATH = live/<streamKey>.
+  ~^live/(.+)$:
+    runOnOnline: /usr/local/etc/mediamtx/on-online.sh
+    runOnOnlineRestart: true
+    runOnOffline: /usr/local/etc/mediamtx/on-offline.sh
+
+  # Path público de distribuição: ffmpeg republica em public/<liveId>.
+  # Sem hooks (evita loop): espectadores leem daqui via HLS.
+  # (Sem entrada = usa os defaults; listado aqui só como documentação.)
+  # ~^public/:
+  #   (defaults)
