@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Search, Bell, MessageSquare, User, Video, Menu, FileText } from "lucide-react"
+import { Home, Search, Bell, MessageSquare, User, Menu, Plus, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { useState, useEffect } from "react"
 import { toast } from "@/components/ui/use-toast"
+import { CreateMenuDialog } from "@/components/create-menu-dialog"
 
 interface UserData {
   name: string
@@ -16,10 +17,18 @@ interface UserData {
   avatar?: string
 }
 
+interface NavItem {
+  href?: string
+  icon: LucideIcon
+  label: string
+  isCreate?: boolean
+}
+
 export function Navbar() {
   const pathname = usePathname()
   const [user, setUser] = useState<UserData | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -65,14 +74,15 @@ export function Navbar() {
     })
   }
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { href: "/feed", icon: Home, label: "Início" },
     { href: "/notifications", icon: Bell, label: "Notificações" },
-    { href: "/reels", icon: Video, label: "Reels" },
-    { href: "/pages", icon: FileText, label: "Páginas" },
+    { icon: Plus, label: "Criar", isCreate: true },
     { href: "/search", icon: Search, label: "Buscar" },
     { href: "/profile", icon: User, label: "Perfil" },
   ]
+
+  const isCreateActive = pathname === "/reels" || pathname?.startsWith("/live")
 
   return (
     <>
@@ -85,18 +95,31 @@ export function Navbar() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
-                  pathname === item.href ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <item.icon className="h-5 w-5" />
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) =>
+              item.isCreate ? (
+                <button
+                  key={item.label}
+                  onClick={() => setMenuOpen(true)}
+                  className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                    isCreateActive ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </button>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href as string}
+                  className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                    pathname === item.href ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </Link>
+              )
+            )}
           </nav>
 
           {/* User Actions / Mobile Menu */}
@@ -153,20 +176,35 @@ export function Navbar() {
       {/* Bottom Navigation for Mobile - hidden on messages page */}
       <div className={`fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg md:hidden z-50 ${pathname === "/messages" ? "hidden" : ""}`}>
         <nav className="flex justify-around h-12 items-center px-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-col items-center justify-center text-xs font-medium transition-colors p-1 ${
-                pathname === item.href ? "text-primary" : "text-muted-foreground hover:text-primary"
-              }`}
-            >
-              <item.icon className="h-4 w-4" />
-              <span className="mt-0.5 text-[10px]">{item.label}</span>
-            </Link>
-          ))}
+          {navItems.map((item) =>
+            item.isCreate ? (
+              <button
+                key={item.label}
+                onClick={() => setMenuOpen(true)}
+                className={`flex flex-col items-center justify-center text-xs font-medium transition-colors p-1 ${
+                  isCreateActive ? "text-primary" : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <item.icon className="h-4 w-4" />
+                <span className="mt-0.5 text-[10px]">{item.label}</span>
+              </button>
+            ) : (
+              <Link
+                key={item.href}
+                href={item.href as string}
+                className={`flex flex-col items-center justify-center text-xs font-medium transition-colors p-1 ${
+                  pathname === item.href ? "text-primary" : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <item.icon className="h-4 w-4" />
+                <span className="mt-0.5 text-[10px]">{item.label}</span>
+              </Link>
+            )
+          )}
         </nav>
       </div>
+
+      <CreateMenuDialog open={menuOpen} onOpenChange={setMenuOpen} />
     </>
   )
 }
